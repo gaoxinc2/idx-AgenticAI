@@ -1,34 +1,14 @@
 # idx-AgenticAI
 
-Week 0 Progress
+# Week 0 Setup Summary
 
-Completed
+Week 0 setup was successfully completed after configuring the local development environment, MySQL database, OpenClaw, and WhatsApp integration. A Python virtual environment was created and all required dependencies were installed. The idx_exchange MySQL database was created, and both rets_property.sql and california_sold.sql were imported successfully. During verification, the imported datasets contained fewer rows than stated in the internship handbook (rets_property: 53,122 rows; california_sold: 87,157 rows). 
 
-* Installed OpenClaw (v2026.6.10)
-* Configured OpenAI authentication
-* Installed Node.js and Python virtual environment
-* Installed required Python packages
-* Installed and configured local MySQL
-* Created idx_exchange database
-* Imported rets_property.sql, california_sold.sql
-* Verified database tables and row counts 
-* Created .env for local configuration
-* Added .gitignore to protect secrets
-* Linked WhatsApp successfully using OpenClaw
-* Verified WhatsApp channel status:
-    * enabled
-    * configured
-    * linked
-    * running
-    * connected
-    * healthy
+## WhatsApp Listener Issue
 
+During the final WhatsApp test, outbound sends initially failed with `No active WhatsApp Web listener (account: default)`, even though WhatsApp appeared linked and healthy. A basic gateway restart did not fully resolve the issue.
 
-Notes:
-1. The final Week 0 deliverable (“agent sends a test WhatsApp message”) is currently blocked. The installed wacli-whatsapp skill depends on the wacli executable. The installation command documented by the skill: brew install steipete/tap/wacli, currently fails because the Homebrew formula no longer exists.
-2. My local import completed successfully, but the imported datasets contain fewer rows than listed in the handbook:
+The problem was fixed after running the OpenClaw update/service refresh process, which installed missing configured plugins, including `clawhub:@openclaw/whatsapp`, refreshed the gateway service, and verified the updated gateway. After that, WhatsApp showed a fresh active transport connection and the message send command succeeded:
 
-* rets_property: 53,122 rows
-* california_sold: 87,157 rows
-
-Both tables were imported without MySQL errors, and the SQL file california_sold.sql contains approximately 87,157 INSERT statements, indicating the imported row count matches the provided dataset rather than the handbook’s expected counts.
+```bash
+openclaw message send --channel whatsapp --target +12178190191 --message 'Hello from IDX Exchange agent'
