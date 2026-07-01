@@ -12,6 +12,7 @@ The problem was fixed after running the OpenClaw update/service refresh process,
 
 ```bash
 openclaw message send --channel whatsapp --target +12178190191 --message 'Hello from IDX Exchange agent'
+```
 
 # Week 2 Summary
 
