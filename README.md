@@ -77,3 +77,121 @@ Output:
 - `tsconfig.json`
 
 The completed parser will serve as the natural language front end for the parameterized MySQL property search implementation in Week 3.
+
+
+# Week 3 – MLS Database Integration
+
+## Objective
+Integrate OpenClaw with the MLS databases by building a reusable MySQL connection layer, implementing active listing and sold comparable queries, and connecting them with the Week 2 NLP property parser.
+
+## Tasks Completed
+
+### 1. MySQL Connection Module
+- Installed `mysql2` and `dotenv`.
+- Configured database credentials using `.env`.
+- Created a reusable MySQL connection pool in `src/db/mysql.ts`.
+- Implemented a generic `query()` helper for parameterized SQL queries.
+- Verified successful connection to the `idx_exchange` database.
+
+**Test**
+
+```bash
+npx ts-node src/db/test.ts
+```
+
+Output:
+
+```text
+[ { count: 53122 } ]
+```
+
+---
+
+### 2. Active Listing Search (`rets_property`)
+- Created `searchActiveListings()` to query active MLS listings.
+- Added support for filters from the Week 2 parser:
+  - City
+  - Maximum price
+  - Bedrooms
+  - Bathrooms
+  - Square footage
+  - Property type
+  - Pool
+  - View
+- Implemented pagination using `LIMIT` and `OFFSET`.
+- Sorted results by price (ascending).
+- Used parameterized SQL (`?`) to prevent SQL injection.
+
+**Implementation Notes**
+- Updated the test filters to match the existing `PropertyFilters` type by using `null` for unused fields.
+- Switched from `pool.execute()` to `pool.query()` to resolve the `mysqld_stmt_execute` error with parameterized pagination.
+- Updated the `ListingRow` interface so the `baths` field accepts `number | string`, matching the MySQL return type.
+
+**Test**
+
+```bash
+npx ts-node src/db/activeListings.test.ts
+```
+
+Successfully returned the first 10 matching active listings in Irvine under the specified filters.
+
+---
+
+### 3. Sold Comparables Query (`california_sold`)
+- Created `getSoldComps()` to retrieve recently sold residential properties.
+- Added filters for:
+  - City
+  - Number of months (default: 12)
+- Returned the 50 most recent sold properties.
+- Sorted results by closing date (descending).
+- Used parameterized SQL queries.
+
+**Test**
+
+```bash
+npx ts-node src/db/soldComps.test.ts
+```
+
+Successfully retrieved recent sold comparable properties for the selected city.
+
+---
+
+### 4. OpenClaw Property Search Skill
+- Integrated the Week 2 NLP property parser with the Week 3 database queries.
+- Created `propertySearchSkill.ts` to:
+  - Parse natural language property requests.
+  - Query active listings or sold comparables based on the user's request.
+  - Format results into readable property cards.
+- Added `propertySearchSkill.test.ts` to verify the complete workflow.
+
+**Test**
+
+```bash
+npx ts-node src/skills/propertySearchSkill.test.ts
+```
+
+Successfully returned:
+- Active property listings with formatted property cards.
+- Recent sold comparable properties with formatted property cards.
+
+## Files Created
+
+```text
+src/db/
+├── mysql.ts
+├── test.ts
+├── activeListings.ts
+├── activeListings.test.ts
+├── soldComps.ts
+└── soldComps.test.ts
+
+src/skills/
+├── propertySearchSkill.ts
+└── propertySearchSkill.test.ts
+```
+
+## Status
+
+Completed the Week 3 MLS Database Integration.
+
+The OpenClaw property search skill now accepts natural language property requests, parses search filters, queries both MLS databases using parameterized SQL, and returns formatted active listings and sold comparable property cards.
