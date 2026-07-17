@@ -13,6 +13,7 @@ export interface ListingRow {
   sqft: number;
   type: string;
   status: string;
+  photoCount: number | null;
 }
 
 export async function searchActiveListings(
@@ -34,7 +35,8 @@ export async function searchActiveListings(
       LM_Dec_3 AS baths,
       LM_Int2_3 AS sqft,
       L_Type_ AS type,
-      L_Status AS status
+      L_Status AS status,
+      PhotoCount AS photoCount
     FROM rets_property
     WHERE L_Status = "Active"
   `;

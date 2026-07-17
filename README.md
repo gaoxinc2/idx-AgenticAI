@@ -195,3 +195,112 @@ src/skills/
 Completed the Week 3 MLS Database Integration.
 
 The OpenClaw property search skill now accepts natural language property requests, parses search filters, queries both MLS databases using parameterized SQL, and returns formatted active listings and sold comparable property cards.
+
+# Week 4 – Multi-Turn Conversation Memory
+
+## Objective
+
+The goal of Week 4 was to extend the property search agent from a single-message workflow into a multi-turn conversation. Instead of requiring users to provide all search criteria in one message, the agent now remembers previous responses, asks follow-up questions for missing information, and performs the database search once enough details have been collected.
+
+## Implementation
+
+A session memory module was created in `src/memory/sessionMemory.ts` using a JavaScript `Map` to store conversation state for each user. Each session keeps track of search preferences such as city, maximum budget, bedrooms, bathrooms, square footage, property type, pool preference, view preference, HOA limit, previous search results, and the current conversation step. The session can also be reset when the user starts a new search.
+
+A new conversational property search handler was implemented in `src/skills/conversationalPropertySearch.ts`. Each incoming message is first parsed using the existing `parsePropertyQuery()` function from Week 3. Only the filters found in the newest message are extracted and merged into the existing session, allowing previously entered preferences to remain unchanged.
+
+After updating the session, the handler checks whether any required information is still missing. If so, it asks the user a follow-up question. Once the required filters have been collected, the handler converts the stored session into a `PropertyFilters` object and calls the existing `searchActiveListings()` function from Week 3 to retrieve matching MLS listings.
+
+For example:
+
+```text
+User: Find homes in Irvine
+Agent: What is your maximum budget for a home in Irvine?
+
+User: Under $1.2M
+Agent: What property type do you prefer: condo, townhouse, or single family?
+
+User: Single family with at least 3 beds
+Agent: I found 2 matching listings...
+```
+
+The final search remembers all previously entered information, including the city, budget, property type, and bedroom requirement.
+
+## Database Updates
+
+The active listing query in `src/db/activeListings.ts` was updated to include the property photo count by selecting:
+
+```sql
+PhotoCount AS photoCount
+```
+
+The `ListingRow` interface was updated accordingly, and the listing formatter was modified to display the address, city, ZIP code, price, bedrooms, bathrooms, square footage, and photo count using the correct database field names.
+
+Example output:
+
+```text
+1. 14612 Mulberry
+Irvine 92606
+$1,049,000
+3 beds, 2.0 baths
+1420 sqft
+46 photos
+
+2. 164 Cherrybrook Lane
+Irvine 92618
+$1,180,000
+3 beds, 3.0 baths
+1353 sqft
+24 photos
+```
+
+## Testing
+
+Session memory was verified in `src/memory/sessionMemory.test.ts`, confirming that sessions could be created, updated, retrieved, and cleared correctly.
+
+The complete multi-turn workflow was tested in `src/skills/conversationalPropertySearch.test.ts`. The test simulated a conversation where the user provided search preferences across multiple messages. The handler successfully remembered previous inputs, asked for missing information, executed the MySQL query after collecting enough filters, and returned formatted listing results with property details and photo counts.
+
+## WhatsApp Testing Summary
+
+Successfully tested the conversational property search through WhatsApp.
+
+- Started a guided conversation by searching for homes in Irvine.
+- The assistant collected search criteria step by step (budget, property type, and bedrooms).
+- After all required information was provided, the assistant queried the MLS database and returned matching listings.
+- Tested conversational memory by sending a follow-up request: **"Find homes in Irvine under 1.2M with a pool."**
+- The assistant remembered the previous criteria (3-bedroom condo) and automatically applied the new pool preference without asking all questions again.
+- Verified that multi-turn conversation, session memory, and dynamic search refinement work correctly through WhatsApp.
+
+## Files Created
+
+```text
+
+src/memory/
+
+├── sessionMemory.ts
+
+└── sessionMemory.test.ts
+
+src/skills/
+
+├── conversationalPropertySearch.ts
+
+└── conversationalPropertySearch.test.ts
+
+```
+
+## Files Updated
+
+```text
+
+src/skills/
+
+└── propertySearch.ts
+
+src/db/
+
+└── activeListings.ts
+
+```
+## Status
+
+Week 4 successfully introduced session-based conversation memory into the property search agent. The agent now supports natural multi-turn conversations by remembering user preferences across messages, prompting for missing information, reusing the Week 3 MLS search functionality, and returning detailed active listing results once sufficient search criteria have been collected.

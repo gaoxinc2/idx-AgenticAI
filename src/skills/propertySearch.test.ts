@@ -22,4 +22,18 @@ async function runTests() {
   }
 }
 
+const followUpQueries = [
+  "Under $1.2M",
+  "Single family with at least 3 beds",
+  "At least 2 bathrooms",
+  "With a pool",
+  "With a view",
+  "HOA under $500",
+];
+
+for (const query of followUpQueries) {
+  console.log("\nQuery:", query);
+  console.log(parsePropertyQuery(query));
+}
 runTests();
+
