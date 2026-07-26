@@ -1,7 +1,8 @@
 {
   "dependencies": {
     "dotenv": "^17.4.2",
-    "mysql2": "^3.22.6"
+    "mysql2": "^3.22.6",
+    "openai": "^6.49.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
