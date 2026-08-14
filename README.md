@@ -447,92 +447,175 @@ The market statistics agent was fully integrated into the existing WhatsApp prop
 
 ## Objective
 
-The goal of Week 6 was to begin adding semantic search capabilities to the property search agent. Instead of relying only on structured database filters such as city, price, and bedrooms, the agent was extended with the infrastructure required to search MLS listings based on the semantic meaning of natural-language descriptions using vector embeddings.
+The goal of Week 6 was to expand the property search agent by adding the foundation for semantic search using embeddings. Instead of relying only on structured filters such as city, price, bedrooms, and property type, semantic search allows the system to compare the meaning of a user's natural-language request with property listing descriptions and return the most relevant matches.
 
 ## Implementation
 
-A new semantic search pipeline was designed to support embedding-based retrieval.
+Several new modules were created to support embedding generation, storage, retrieval, and cosine similarity search.
 
-First, the official OpenAI Node SDK was added to the project and configured through environment variables. A reusable embedding helper (`src/ai/embeddings.ts`) was implemented to generate embedding vectors using the `text-embedding-3-small` model.
+The first module, `src/ai/embeddings.ts`, integrates the OpenAI Node SDK and uses the `text-embedding-3-small` model to convert text into numerical embedding vectors. These vectors represent the semantic meaning of property descriptions and user search queries.
 
-To store vector data, a new MySQL table named `listing_embeddings` was created. The table stores the MLS listing ID, a searchable text representation of the property, the embedding vector in JSON format, the embedding model used, and timestamps for creation and updates.
+The second module, `src/db/semanticListings.ts`, retrieves active properties from the `rets_property` table and converts each listing into searchable text. Important MLS fields such as property type, city, bedrooms, bathrooms, square footage, year built, price, and listing remarks are combined into one description that can be converted into an embedding.
 
-A new database module (`semanticListings.ts`) was then created to prepare MLS listings for embedding generation. Active listings with property remarks are converted into descriptive natural-language text by combining information such as property type, city, bedrooms, bathrooms, square footage, year built, price, and listing remarks. This text serves as the input for future embedding generation.
+The third module, `src/db/listingEmbeddings.ts`, stores the searchable text and embedding vectors in a new MySQL table called `listing_embeddings`. The module uses `INSERT ... ON DUPLICATE KEY UPDATE` so an existing listing embedding can be updated without creating a duplicate. It was later extended with `getStoredListingEmbeddings()` to retrieve stored vectors for similarity comparisons.
 
-Another database helper (`listingEmbeddings.ts`) was implemented to save embeddings into MySQL using `INSERT ... ON DUPLICATE KEY UPDATE`, allowing existing vectors to be updated without creating duplicate records.
+A cosine similarity helper was implemented in `src/ai/cosineSimilarity.ts`. The function compares two embedding vectors and returns a similarity score. Higher scores represent vectors that are more similar in meaning.
 
-Although semantic search could not yet be completed due to an external API restriction, the entire database pipeline required for storing and retrieving embeddings was successfully implemented and validated.
+Finally, `src/skills/semanticPropertySearch.ts` combines the database retrieval and cosine similarity logic. It loads the stored listing embeddings, compares them against a query vector, sorts the results from highest to lowest similarity, and returns the top matching properties.
+
+For example, the local semantic search test returned:
+
+```text
+Results:
+
+1. TEST_A
+Similarity: 1.0000
+Family home with backyard
+
+2. TEST_C
+Similarity: 0.9939
+Family house with outdoor space
+
+3. TEST123
+Similarity: 0.2673
+Test listing for semantic search.
+```
+
+The results confirmed that listings represented by similar vectors were ranked higher than less-related listings.
 
 ## Database Updates
 
-A new table was added to the `idx_exchange` database:
+A new `listing_embeddings` table was added to the `idx_exchange` database.
 
-```text
-listing_embeddings
-```
-
-The table contains:
+The table stores:
 
 - Listing ID
 - Searchable listing description
-- Embedding vector (JSON)
+- Embedding vector in JSON format
 - Embedding model
 - Created timestamp
 - Updated timestamp
 
-This table will serve as the vector store for future semantic property searches.
+The `listing_id` field is unique so that each property has one current embedding record.
+
+The `listingEmbeddings.ts` database module supports:
+
+- Saving embedding vectors
+- Updating existing embedding vectors
+- Retrieving stored vectors
+- Converting stored JSON embeddings back into TypeScript number arrays
+
+These stored vectors can then be passed to the cosine similarity function for semantic ranking.
+
+## Cosine Similarity Search
+
+Cosine similarity was implemented to compare the query vector with each stored property vector.
+
+The semantic property search process follows this workflow:
+
+```text
+User Query Vector
+        ↓
+Load Stored Listing Embeddings
+        ↓
+Calculate Cosine Similarity
+        ↓
+Assign Similarity Score
+        ↓
+Sort Highest to Lowest
+        ↓
+Return Top Matching Listings
+```
+
+Local testing used sample vectors because live OpenAI embedding generation was unavailable from the current development region.
+
+The test successfully produced similarity scores of:
+
+```text
+TEST_A   → 1.0000
+TEST_C   → 0.9939
+TEST123  → 0.2673
+```
+
+This confirmed that the cosine similarity implementation correctly identifies and ranks the most similar vectors.
 
 ## Testing
 
-Several components of the semantic search pipeline were tested independently.
+Each module was tested independently before combining them into the semantic property search workflow.
 
-The embedding helper successfully loaded the OpenAI SDK, environment variables, and embedding model configuration.
+`embeddings.test.ts` tested the OpenAI embedding helper and confirmed that the SDK, environment variables, and embedding model were configured correctly. The request successfully reached the OpenAI API but was blocked by a regional access restriction.
 
-The semantic listing generator successfully loaded active MLS listings from the database and converted each listing into a descriptive natural-language document suitable for embedding.
+`semanticListings.test.ts` verified that active MLS listings could be retrieved from `rets_property` and converted into searchable natural-language descriptions containing the important property information.
 
-The embedding storage module was tested locally using sample embedding vectors. Test vectors were successfully inserted into the `listing_embeddings` table and verified through MySQL, confirming that JSON vectors and upsert operations function correctly.
+`listingEmbeddings.test.ts` tested the embedding storage logic using sample vectors. The vectors were successfully stored in the MySQL `listing_embeddings` table as JSON data.
+
+`listingEmbeddings.read.test.ts` verified that stored embeddings could be retrieved from MySQL and converted back into number arrays for similarity calculations.
+
+`cosineSimilarity.test.ts` tested the similarity calculation using simple vectors. Identical vectors returned a similarity score of `1`, while unrelated test vectors returned a score of `0`.
+
+Finally, `semanticPropertySearch.test.ts` tested the complete local similarity search workflow. The test loaded stored vectors, calculated cosine similarity for each listing, sorted the results by similarity score, and successfully returned the highest-ranked listings.
 
 ## Problem Encountered
 
-When testing the OpenAI Embeddings API, requests returned the following error:
+During testing, the OpenAI Embeddings API returned:
 
 ```text
 403 Country, region, or territory not supported
 ```
 
-The implementation itself was verified to be correct. The error originated from the OpenAI API before any embedding vectors were returned, indicating that API requests from the current network or region were not permitted.
+The TypeScript implementation successfully reached the OpenAI API, but the request was rejected because development was being performed from Hong Kong, where the API request was subject to a regional access restriction.
 
-Because embedding generation depends on the external API, this prevented real MLS listing embeddings from being generated during Week 6.
+Because the OpenAI API is responsible for converting real property descriptions and user queries into embeddings, real MLS embeddings could not be generated from the current development environment.
 
 ## Temporary Solution
 
-To continue development despite the API restriction, the semantic search pipeline was developed in modular stages.
+To continue development despite the API restriction, sample embedding vectors were used to test the remaining semantic search pipeline locally.
 
-Instead of generating live embeddings, sample embedding vectors were used to verify:
+The temporary vectors allowed the following functionality to be completed and verified:
 
-- MySQL table creation
-- JSON vector storage
-- Upsert logic
-- Retrieval of searchable listing data
-- Database integration
+- MySQL embedding storage
+- Embedding retrieval
+- JSON vector conversion
+- Cosine similarity calculation
+- Similarity ranking
+- Top-result selection
 
-This allowed the entire storage pipeline to be completed independently of the external API. Once API access becomes available, the temporary test vectors can be replaced with real embeddings generated by the existing `createEmbedding()` function without requiring changes to the database schema or storage logic.
+Instead of generating the query vector through the OpenAI API, the local test supplied a sample vector directly. This allowed the cosine similarity search to be developed independently of the external API.
+
+Once OpenAI API access is available, the sample query vector can be replaced with a real embedding generated from the user's free-text request using `createEmbedding()`. The existing storage, cosine similarity, and ranking logic can then be reused without architectural changes.
 
 ## Files Created
 
 ```text
-src/
-├── ai/
-│   ├── embeddings.ts
-│   └── embeddings.test.ts
-│
-├── db/
-│   ├── semanticListings.ts
-│   ├── semanticListings.test.ts
-│   ├── listingEmbeddings.ts
-│   └── listingEmbeddings.test.ts
+src/ai/
+├── embeddings.ts
+├── embeddings.test.ts
+├── cosineSimilarity.ts
+└── cosineSimilarity.test.ts
+
+src/db/
+├── semanticListings.ts
+├── semanticListings.test.ts
+├── listingEmbeddings.ts
+├── listingEmbeddings.test.ts
+└── listingEmbeddings.read.test.ts
+
+src/skills/
+├── semanticPropertySearch.ts
+└── semanticPropertySearch.test.ts
 ```
+
+## Files Updated
+
+```text
+src/db/
+└── listingEmbeddings.ts
+```
+
+The `listingEmbeddings.ts` module was updated to retrieve stored embedding vectors in addition to saving them, allowing the vectors to be used by the cosine similarity search.
 
 ## Status
 
-Week 6 established the foundation for semantic property search by implementing the embedding generation helper, semantic listing preparation, vector storage schema, and database persistence layer. While live embedding generation was temporarily blocked by an external OpenAI API regional restriction, the remainder of the semantic search infrastructure was completed and validated. Once API access becomes available, real embedding vectors can be generated and stored without requiring further architectural changes.
+Week 6 successfully introduced the foundation for semantic property search using embeddings and cosine similarity. The implementation now supports converting MLS listings into searchable descriptions, storing and retrieving embedding vectors, calculating cosine similarity scores, ranking listings by semantic similarity, and returning the most relevant results.
+
+The cosine similarity search was successfully tested locally using sample vectors. Live OpenAI embedding generation remains temporarily unavailable because of the regional API restriction encountered while developing from Hong Kong. Once API access is available, the temporary vectors can be replaced with real listing and query embeddings without changing the existing semantic search architecture.
