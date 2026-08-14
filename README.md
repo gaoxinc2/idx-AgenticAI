@@ -421,7 +421,7 @@ src/
 
 ---
 
-```md
+
 ## WhatsApp Integration
 
 The Week 5 market statistics agent was integrated into the existing WhatsApp property search workflow.
@@ -619,3 +619,608 @@ The `listingEmbeddings.ts` module was updated to retrieve stored embedding vecto
 Week 6 successfully introduced the foundation for semantic property search using embeddings and cosine similarity. The implementation now supports converting MLS listings into searchable descriptions, storing and retrieving embedding vectors, calculating cosine similarity scores, ranking listings by semantic similarity, and returning the most relevant results.
 
 The cosine similarity search was successfully tested locally using sample vectors. Live OpenAI embedding generation remains temporarily unavailable because of the regional API restriction encountered while developing from Hong Kong. Once API access is available, the temporary vectors can be replaced with real listing and query embeddings without changing the existing semantic search architecture.
+
+# Week 7 – Hybrid Property Recommendation Engine
+
+## Objective
+
+The goal of Week 7 was to expand the real estate assistant by adding a hybrid property recommendation engine. Instead of only searching for properties using filters or semantic similarity, the new recommendation system can take a specific active listing and return similar properties by combining structured MLS data with embedding-based similarity.
+
+The recommendation engine calculates a score out of 100 points. Structured property similarity contributes up to 60 points, while semantic similarity contributes up to 40 points.
+
+The recommended properties are then validated using historical sales from the `california_sold` table. This allows the system to compare each recommendation's asking price against recent comparable sales and provide a simple pricing assessment.
+
+## Implementation
+
+Several new modules were created to support local embedding generation, real MLS embedding population, hybrid recommendation scoring, and comparable-sales validation.
+
+The first module, `src/ai/localEmbedding.ts`, was created as a temporary local embedding helper. Since live OpenAI embedding generation was unavailable during development, the helper generates deterministic 64-dimensional vectors from listing text. The text is normalized, split into tokens, hashed using SHA-256, mapped into vector positions, and normalized into a fixed-length embedding.
+
+The same listing text always generates the same vector, allowing the semantic recommendation pipeline to be tested without depending on the external embedding API.
+
+The second module, `src/db/populateListingEmbeddings.ts`, retrieves real active properties from the `rets_property` table and converts selected MLS fields into searchable text. The searchable text includes the city, property type, approximate square footage, and approximate listing price.
+
+For example:
+
+```text
+city Beverly Hills property type 4 approximately 3750 square feet approximately 4000000 dollars
+```
+
+The searchable text is passed to the local embedding helper and stored in the existing `listing_embeddings` table using:
+
+```text
+embedding_model = local-test-64
+```
+
+This allowed real active MLS listings to use the Week 6 embedding storage infrastructure.
+
+The main hybrid recommendation logic was implemented in `src/skills/recommendationEngine.ts`. The engine loads active MLS properties from `rets_property`, loads their corresponding stored vectors from `listing_embeddings`, calculates structured similarity and semantic similarity, combines the scores, sorts the results, and returns the top five recommendations.
+
+The structured score contributes a maximum of 60 points:
+
+```text
+Price similarity          → 20 points
+Property type similarity  → 15 points
+City similarity           → 15 points
+Square footage similarity → 10 points
+```
+
+Price similarity is scored using the difference between the target property and candidate listing:
+
+```text
+Difference < $50,000   → 20 points
+Difference < $150,000  → 12 points
+Difference < $300,000  → 5 points
+```
+
+Square footage similarity is scored using:
+
+```text
+Difference < 300 sqft → 10 points
+Difference < 700 sqft → 5 points
+```
+
+Semantic similarity contributes up to 40 points and is calculated using cosine similarity:
+
+```text
+semantic score = cosine similarity × 40
+```
+
+The final hybrid score is therefore:
+
+```text
+structured score + semantic score = total score / 100
+```
+
+For example:
+
+```text
+Structured: 25/60
+Semantic: 30.06/40
+Total: 55.06/100
+```
+
+The target listing is excluded from its own recommendation results, and all candidate properties are sorted from highest to lowest total score.
+
+## Local Embedding Helper
+
+At the beginning of Week 7, the existing `listing_embeddings` table contained only the Week 6 test records:
+
+```text
+TEST_A
+TEST_B
+TEST_C
+TEST123
+```
+
+A database query confirmed that none of the active MLS listings had a matching stored embedding:
+
+```text
+active_with_embeddings = 0
+```
+
+Because the OpenAI embedding API was unavailable, real MLS listings could not immediately be embedded using `text-embedding-3-small`.
+
+To continue development, a local deterministic embedding helper was created in:
+
+```text
+src/ai/localEmbedding.ts
+```
+
+The helper generates a 64-dimensional vector by:
+
+- Normalizing the input text
+- Splitting the text into tokens
+- Hashing each token with SHA-256
+- Mapping each token into one of 64 vector positions
+- Assigning deterministic positive or negative values
+- Normalizing the final vector
+
+The helper was tested using similar and unrelated property descriptions. Similar descriptions produced higher cosine similarity scores than unrelated descriptions.
+
+This local helper is intended only as a temporary development fallback. Once OpenAI embedding access becomes available, the `local-test-64` vectors can be replaced by real `text-embedding-3-small` embeddings without changing the recommendation architecture.
+
+## Database Updates
+
+The existing `listing_embeddings` table from Week 6 was reused for Week 7.
+
+Real active listings from `rets_property` were converted into searchable text and stored with local embeddings.
+
+Example stored records included:
+
+```text
+1118422731
+city Beverly Hills property type 4 approximately 3750 square feet approximately 4000000 dollars
+local-test-64
+```
+
+```text
+1118405579
+city Carmel Valley property type 4 approximately 2750 square feet approximately 2900000 dollars
+local-test-64
+```
+
+This connected real MLS listing IDs with stored embedding vectors and allowed the hybrid recommendation engine to operate on real data.
+
+The recommendation engine uses the following fields from `rets_property`:
+
+- `L_ListingID`
+- `L_SystemPrice`
+- `L_City`
+- `L_Keyword2`
+- `LM_Int2_3`
+- `L_Status`
+
+During development, it was discovered that `L_Keyword2` contains numeric property-type codes instead of property-type names.
+
+For example:
+
+```text
+1
+2
+3
+4
+5
+6
+```
+
+The recommendation interface was therefore changed from:
+
+```text
+propertyType: string
+```
+
+to:
+
+```text
+propertyType: number
+```
+
+Candidate properties now receive the 15 property-type similarity points when their numeric property-type code matches the target listing.
+
+## Recommendation Testing
+
+The recommendation engine was tested using the real active listing:
+
+```text
+Listing ID: 1118422731
+City: Beverly Hills
+Price: $3,950,000
+Property Type: 4
+Square Feet: 3,677
+```
+
+The test command was:
+
+```bash
+npx ts-node src/skills/recommendationEngine.test.ts 1118422731
+```
+
+The recommendation engine successfully returned five real MLS properties ranked by hybrid score:
+
+```text
+1. 1114632206
+   Carmel Valley | 4
+   $1,595,000 | 3,597 sqft
+   Structured: 25/60
+   Semantic: 30.06/40
+   Total: 55.06/100
+
+2. 1117769987
+   Eastvale | 4
+   $1,060,000 | 3,257 sqft
+   Structured: 20/60
+   Semantic: 29.81/40
+   Total: 49.81/100
+
+3. 1114685551
+   Glendora | 6
+   $3,998,000 | 6,789 sqft
+   Structured: 20/60
+   Semantic: 29.81/40
+   Total: 49.81/100
+
+4. 1114971480
+   Diamond Bar | 5
+   $3,980,000 | 6,352 sqft
+   Structured: 20/60
+   Semantic: 29.33/40
+   Total: 49.33/100
+
+5. 1116237080
+   Lake Arrowhead | 4
+   $985,000 | 3,087 sqft
+   Structured: 20/60
+   Semantic: 28.64/40
+   Total: 48.64/100
+```
+
+This confirmed that the recommendation engine successfully:
+
+- Loaded real active MLS listings
+- Loaded stored embeddings
+- Calculated structured similarity
+- Calculated cosine similarity
+- Generated semantic similarity scores
+- Combined both scores into a score out of 100
+- Excluded the target property
+- Ranked candidates correctly
+- Returned the top five recommendations
+
+## Comparable Sales Validation
+
+A new database module, `src/db/compValidation.ts`, was created to validate each recommended property's asking price using historical sales from `california_sold`.
+
+The module searches for comparable properties using:
+
+- Same city
+- `PropertyType = Residential`
+- Living area within ±20% of the recommendation
+- Close date within the previous six months
+- Valid close price
+- Valid living area
+
+The system calculates the average sold price per square foot:
+
+```text
+Average $/sqft =
+Average of ClosePrice / LivingArea
+```
+
+The estimated comp-supported value is then calculated using:
+
+```text
+Estimated Comp Value =
+Average Sold $/sqft × Recommendation Square Footage
+```
+
+The asking price is compared against this estimate using:
+
+```text
+(List Price - Comp Estimate)
+----------------------------
+       Comp Estimate
+
+× 100
+```
+
+The resulting percentage is stored as `deltaPct`.
+
+## Comparable Sales Testing
+
+The comp validation module was tested independently using the Beverly Hills property.
+
+The test command was:
+
+```bash
+npx ts-node src/db/compValidation.test.ts
+```
+
+The result was:
+
+```text
+Comp validation result:
+{
+  compPrice: 5765154,
+  listPrice: 3950000,
+  compCount: 32,
+  avgPricePerSqft: 1567.9,
+  deltaPct: -31.5
+}
+```
+
+Formatted:
+
+```text
+Comps used: 32
+Average sold $/sqft: $1567.9
+Estimated comp value: $5,765,154
+List price: $3,950,000
+Difference: -31.5%
+```
+
+This confirmed that the comparable-sales query, average price-per-square-foot calculation, estimated comp value, and price difference calculation all worked correctly.
+
+## Recommendation Skill
+
+A higher-level recommendation skill was implemented in:
+
+```text
+src/skills/recommendationSkill.ts
+```
+
+The skill combines the recommendation engine with comparable-sales validation.
+
+The workflow is:
+
+```text
+Target Listing
+        ↓
+Hybrid Recommendation Engine
+        ↓
+Top 5 Similar Listings
+        ↓
+Validate Each Listing
+Using california_sold
+        ↓
+Calculate Comp Estimate
+        ↓
+Compare List Price
+        ↓
+Format Final Response
+```
+
+Each recommendation includes:
+
+- Listing ID
+- City
+- Property type
+- Listing price
+- Square footage
+- Structured similarity score
+- Semantic similarity score
+- Total similarity score
+- Estimated comp-supported value
+- Average sold price per square foot
+- Number of comparable sales used
+- List-price difference from the comp estimate
+- Pricing assessment
+
+The pricing assessment uses:
+
+```text
+Delta <= -5%
+→ Below recent comp estimate
+
+Delta between -5% and +5%
+→ Near recent comp estimate
+
+Delta >= +5%
+→ Above recent comp estimate
+```
+
+The wording is intentionally conservative because the current comp model does not account for every property characteristic, such as exact neighborhood, renovation quality, condition, views, lot characteristics, or special amenities.
+
+## Complete Recommendation Testing
+
+The complete recommendation pipeline was tested using:
+
+```bash
+npx ts-node src/skills/recommendationSkill.test.ts 1118422731
+```
+
+The system returned five recommended active properties and performed individual historical comp analysis for each listing.
+
+For example:
+
+```text
+1. Listing 1114632206
+Carmel Valley | Property Type 4
+$1,595,000 | 3,597 sqft
+Similarity: 55.06/100
+  Structured: 25/60
+  Semantic: 30.06/40
+Recent comp estimate: $2,947,816
+Average sold $/sqft: $819.52
+Comp sales used: 10
+List vs comps: -45.9%
+Assessment: Below recent comp estimate
+```
+
+Another recommendation returned:
+
+```text
+2. Listing 1117769987
+Eastvale | Property Type 4
+$1,060,000 | 3,257 sqft
+Similarity: 49.81/100
+  Structured: 20/60
+  Semantic: 29.81/40
+Recent comp estimate: $1,039,574
+Average sold $/sqft: $319.18
+Comp sales used: 71
+List vs comps: +2%
+Assessment: Near recent comp estimate
+```
+
+This confirmed that recommendation ranking and comparable-sales validation successfully operate together in one workflow.
+
+## Problems Encountered
+
+The first issue was that the `listing_embeddings` table contained only the four Week 6 test embeddings. None of the real active MLS listings had matching vectors, so the hybrid recommendation engine initially had no real candidates to compare.
+
+This was solved by creating `populateListingEmbeddings.ts`, which retrieves real active MLS listings, creates searchable listing text, generates local embeddings, and stores them in `listing_embeddings`.
+
+The second issue was that live OpenAI embeddings could not be generated because of the existing API access and connection problems from Week 6.
+
+To avoid blocking Week 7 development, `localEmbedding.ts` was created. The helper generates deterministic 64-dimensional vectors locally, allowing the entire recommendation system to be developed and tested without external embedding generation.
+
+The third issue was the property-type field. The recommendation engine initially assumed `L_Keyword2` contained string property names. Database inspection showed that the field actually contains numeric codes.
+
+The recommendation interface was updated so `propertyType` is stored as a number and property types are compared using direct numeric equality.
+
+The fourth issue was discovered while inspecting `california_sold`. One historical record contained:
+
+```text
+CloseDate = 2072-06-29
+```
+
+A query that only checked whether the close date was greater than six months ago would incorrectly include this future record.
+
+The comp query was changed from a one-sided condition to:
+
+```sql
+CloseDate BETWEEN
+    DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+    AND CURDATE()
+```
+
+This prevents invalid future dates from entering the recent comparable-sales calculation.
+
+Another limitation discovered during comp testing was that the number of available comps varies by location.
+
+For example:
+
+```text
+Eastvale → 71 comps
+Glendora → 1 comp
+Diamond Bar → 2 comps
+```
+
+The current implementation includes `compCount` in every recommendation so the amount of supporting historical data remains visible. A future version could add a minimum comp threshold or confidence score.
+
+## WhatsApp Integration
+
+The Week 7 recommendation engine was integrated into the existing `whatsappPropertySearch.ts` routing workflow.
+
+A recommendation listing-ID detector was added to recognize requests such as:
+
+```text
+Show me homes similar to listing 1118422731
+```
+
+The routing order is now:
+
+```text
+Incoming Message
+        ↓
+Recommendation Request?
+        ↓ No
+Market Statistics Question?
+        ↓ No
+Conversational Property Search
+```
+
+Recommendation questions are routed to:
+
+```text
+handleRecommendationQuestion()
+```
+
+Market-statistics questions continue to use:
+
+```text
+handleMarketStatisticsQuestion()
+```
+
+All remaining property-search requests continue to use the existing Week 4 conversational workflow:
+
+```text
+handlePropertyConversation()
+```
+
+During the first routing test, the recommendation request:
+
+```bash
+npx ts-node src/whatsappPropertySearch.ts test-user "Show me homes similar to listing 1118422731"
+```
+
+incorrectly returned:
+
+```text
+Current session: { conversationStep: 1 }
+What city would you like to search in?
+```
+
+The recommendation detector had been implemented, but it was not being called inside the main routing function. Because of this, recommendation requests were falling through to the normal conversational property-search agent.
+
+The solution was to call `extractRecommendationListingId()` before checking market-statistics questions or invoking the normal property-search workflow.
+
+The existing property-search route was tested again using:
+
+```bash
+npx ts-node src/whatsappPropertySearch.ts test-user "Find homes in Irvine"
+```
+
+Result:
+
+```text
+Current session: { conversationStep: 1, city: 'Irvine' }
+What is your maximum budget for a home in Irvine?
+```
+
+This confirmed that the Week 7 routing changes preserved the existing Week 4 property-search behavior.
+
+## Files Created
+
+```text
+src/ai/
+├── localEmbedding.ts
+└── localEmbedding.test.ts
+
+src/db/
+├── populateListingEmbeddings.ts
+├── compValidation.ts
+└── compValidation.test.ts
+
+src/skills/
+├── recommendationEngine.ts
+├── recommendationEngine.test.ts
+├── recommendationSkill.ts
+└── recommendationSkill.test.ts
+```
+
+## Files Updated
+
+```text
+src/
+└── whatsappPropertySearch.ts
+```
+
+The existing Week 6 `listing_embeddings` infrastructure was reused for storing and retrieving real listing vectors.
+
+## Status
+
+Week 7 successfully introduced a hybrid property recommendation engine that combines structured MLS similarity with embedding-based semantic similarity.
+
+The recommendation engine can now take a real active MLS listing, compare it against other active properties, calculate a structured score out of 60, calculate a semantic score out of 40, combine the scores into a total similarity score out of 100, rank the candidates, and return the top five recommendations.
+
+Each recommended property is also validated using historical sales from `california_sold`. The system calculates average sold price per square foot, estimates a comparable-sales-supported property value, compares the current asking price against that estimate, and returns a simple below, near, or above recent comp assessment.
+
+A temporary deterministic local embedding helper was introduced because real OpenAI embedding generation remained unavailable during development. Real MLS listings are currently stored using the `local-test-64` embedding model. Once OpenAI API access is available, these temporary vectors can be replaced with `text-embedding-3-small` embeddings without changing the recommendation engine, cosine similarity logic, database storage, ranking system, or comp-validation architecture.
+
+The Week 7 recommendation skill was integrated into the existing WhatsApp/CLI routing system while preserving both the Week 4 conversational property search and the Week 5 market statistics agent.
+
+The complete Week 7 workflow now supports:
+
+```text
+Target Active Listing
+        ↓
+Structured MLS Similarity
+        +
+Semantic Vector Similarity
+        ↓
+Hybrid Score / 100
+        ↓
+Top 5 Active Recommendations
+        ↓
+Historical Sold Comp Validation
+        ↓
+Estimated Comp Value
+        ↓
+Price Assessment
+        ↓
+Formatted Recommendation Response
+```
+
+Week 7 successfully completed the hybrid recommendation and comparable-sales validation layer of the real estate assistant.

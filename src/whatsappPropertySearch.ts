@@ -1,6 +1,9 @@
 import { handlePropertyConversation } from "./skills/conversationalPropertySearch";
 import { pool } from "./db/mysql";
 import { handleMarketStatisticsQuestion } from "./skills/marketStatisticsSkill";
+import {
+  handleRecommendationQuestion,
+} from "./skills/recommendationSkill";
 
 function isMarketStatisticsQuestion(
   message: string,
@@ -36,6 +39,28 @@ function isMarketStatisticsQuestion(
   );
 }
 
+// Week 7: Detect recommendation requests
+// and extract the target listing ID.
+function extractRecommendationListingId(
+  message: string,
+): string | null {
+  const patterns = [
+    /similar to listing\s+([A-Za-z0-9_-]+)/i,
+    /recommend.*listing\s+([A-Za-z0-9_-]+)/i,
+    /like listing\s+([A-Za-z0-9_-]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
 async function main(): Promise<void> {
   const userId = process.argv[2];
   const message = process.argv.slice(3).join(" ");
@@ -51,27 +76,44 @@ async function main(): Promise<void> {
   try {
     let response: string;
 
-    // Week 5: Route market-statistics questions
-    // to the market statistics skill.
-    if (isMarketStatisticsQuestion(message)) {
-      response = await handleMarketStatisticsQuestion(
-        message,
-      );
-    } else {
-      // Week 4: Keep the existing conversational
-      // property-search flow unchanged.
-      response = await handlePropertyConversation(
-        userId,
-        message,
-      );
+    // Week 7: Route recommendation requests FIRST.
+    const recommendationListingId =
+      extractRecommendationListingId(message);
+
+    if (recommendationListingId) {
+      response =
+        await handleRecommendationQuestion(
+          recommendationListingId,
+        );
+    }
+
+    // Week 5: Route market-statistics questions.
+    else if (
+      isMarketStatisticsQuestion(message)
+    ) {
+      response =
+        await handleMarketStatisticsQuestion(
+          message,
+        );
+    }
+
+    // Week 4: Existing conversational
+    // property-search flow.
+    else {
+      response =
+        await handlePropertyConversation(
+          userId,
+          message,
+        );
     }
 
     console.log(response);
   } catch (error) {
     console.error(
-      "Property or market request failed:",
+      "Property, market, or recommendation request failed:",
       error,
     );
+
     process.exitCode = 1;
   } finally {
     await pool.end();
