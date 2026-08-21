@@ -1,181 +1,196 @@
-# idx-AgenticAI
+# idx-AgenticAI — Project Documentation
 
-# Week 0 Setup Summary
+An OpenClaw-based real estate assistant that grew, week by week, from a simple
+environment setup into a full multi-agent system: natural-language property
+search, market statistics, semantic + hybrid recommendations, retrieval-
+augmented Q&A, and an orchestrator that routes user requests to the right
+agent — all reachable through WhatsApp.
 
-Week 0 setup was successfully completed after configuring the local development environment, MySQL database, OpenClaw, and WhatsApp integration. A Python virtual environment was created and all required dependencies were installed. The idx_exchange MySQL database was created, and both rets_property.sql and california_sold.sql were imported successfully. During verification, the imported datasets contained fewer rows than stated in the internship handbook (rets_property: 53,122 rows; california_sold: 87,157 rows). 
+## Contents
 
-## WhatsApp Listener Issue
+- [Week 0 — Environment Setup](#week-0--environment-setup)
+- [Week 2 — Natural Language Property Search Parser](#week-2--natural-language-property-search-parser)
+- [Week 3 — MLS Database Integration](#week-3--mls-database-integration)
+- [Week 4 — Multi-Turn Conversation Memory](#week-4--multi-turn-conversation-memory)
+- [Week 5 — Market Statistics Agent](#week-5--market-statistics-agent)
+- [Week 6 — Semantic Property Search with Embeddings](#week-6--semantic-property-search-with-embeddings)
+- [Week 7 — Hybrid Property Recommendation Engine](#week-7--hybrid-property-recommendation-engine)
+- [Week 8 — Retrieval-Augmented Generation (RAG)](#week-8--retrieval-augmented-generation-rag)
+- [Week 9 — Multi-Agent Orchestration](#week-9--multi-agent-orchestration)
 
-During the final WhatsApp test, outbound sends initially failed with `No active WhatsApp Web listener (account: default)`, even though WhatsApp appeared linked and healthy. A basic gateway restart did not fully resolve the issue.
+Each week follows the same structure: **Objective → Implementation →
+Testing → Problems & Solutions → Files → Status**, so the log is easy to
+scan and easy to reproduce from.
 
-The problem was fixed after running the OpenClaw update/service refresh process, which installed missing configured plugins, including `clawhub:@openclaw/whatsapp`, refreshed the gateway service, and verified the updated gateway. After that, WhatsApp showed a fresh active transport connection and the message send command succeeded:
+---
+
+## Week 0 — Environment Setup
+
+### Objective
+Stand up the local development environment: Python virtual environment,
+MySQL database, OpenClaw, and WhatsApp integration.
+
+### Implementation
+- Created a Python virtual environment and installed all required dependencies.
+- Created the `idx_exchange` MySQL database.
+- Imported `rets_property.sql` and `california_sold.sql` successfully.
+
+### Verification
+- Row counts came in lower than the internship handbook stated:
+  - `rets_property`: **53,122 rows**
+  - `california_sold`: **87,157 rows**
+
+### Problems & Solutions
+**Problem:** WhatsApp outbound sends failed with
+`No active WhatsApp Web listener (account: default)`, even though WhatsApp
+appeared linked and healthy. A basic gateway restart did not fix it.
+
+**Solution:** Ran the OpenClaw update/service refresh process, which:
+1. Installed missing configured plugins, including `clawhub:@openclaw/whatsapp`.
+2. Refreshed the gateway service.
+3. Verified the updated gateway.
+
+After this, WhatsApp showed a fresh active transport connection and the
+following test succeeded:
 
 ```bash
 openclaw message send --channel whatsapp --target +12178190191 --message 'Hello from IDX Exchange agent'
 ```
 
-# Week 2 Summary
+### Status
+Environment, database, and WhatsApp messaging confirmed working.
 
-Week 2 was successfully completed by implementing a natural language property search parser in TypeScript. A new `propertySearch` skill was created to convert free-text real estate search queries into structured filter objects that will be used to query the `rets_property` database in Week 3. The parser supports extracting the city, maximum price, minimum bedrooms, minimum bathrooms, minimum square footage, property type, pool preference, view preference, and maximum HOA fee from user queries.
+---
 
-## TypeScript Configuration
+## Week 2 — Natural Language Property Search Parser
 
-During testing, `ts-node` initially required manually specifying the CommonJS compiler option because the project did not contain a TypeScript configuration file. A `tsconfig.json` file was added with the module configured as `CommonJS`, allowing the parser to run directly with:
+### Objective
+Build a TypeScript parser that converts free-text real estate search queries
+into structured filter objects, to be used against `rets_property` in Week 3.
+
+### Implementation
+- Created a new `propertySearch` skill that extracts:
+  - City
+  - Maximum price
+  - Minimum bedrooms
+  - Minimum bathrooms
+  - Minimum square footage
+  - Property type
+  - Pool preference
+  - View preference
+  - Maximum HOA fee
+
+### TypeScript Configuration
+- `ts-node` initially required manually specifying the `CommonJS` compiler
+  option because the project had no `tsconfig.json`.
+- Added a `tsconfig.json` with `module: "CommonJS"`, enabling:
 
 ```bash
-
 npx ts-node src/skills/propertySearch.test.ts
-
 ```
 
-## Parser Validation
+### Testing
+Validated with 10+ natural language queries covering different cities,
+budgets, property types, bed/bath counts, square footage, pools, views, and
+HOA limits. All queries converted correctly.
 
-The parser was validated using more than 10 natural language property search queries covering different cities, budgets, property types, bedroom and bathroom counts, square footage, pools, views, and HOA limits. Each query was successfully converted into a structured filter object.
+**Example**
 
-Example test query:
-
+Input:
 ```text
-
 Show me 4-bedroom single family homes in Irvine under $1.8M with 3.5 bathrooms, 2500 sqft, a pool, a view, and HOA under $400.
-
 ```
 
 Output:
-
 ```text
-
 {
-
   city: 'Irvine',
-
   maxPrice: 1800000,
-
   beds: 4,
-
   baths: 3.5,
-
   sqft: 2500,
-
   type: 'SingleFamilyResidence',
-
   pool: 'True',
-
   hasView: 'True',
-
   maxHoa: 400
-
 }
-
 ```
 
-## Files Created
+### Files Created
+```text
+src/skills/propertySearch.ts
+src/skills/propertySearch.test.ts
+tsconfig.json
+```
 
-- `src/skills/propertySearch.ts`
+### Status
+Parser complete and validated. Serves as the NLP front end for the
+Week 3 parameterized MySQL search.
 
-- `src/skills/propertySearch.test.ts`
+---
 
-- `tsconfig.json`
+## Week 3 — MLS Database Integration
 
-The completed parser will serve as the natural language front end for the parameterized MySQL property search implementation in Week 3.
+### Objective
+Connect OpenClaw to the MLS databases: build a reusable MySQL connection
+layer, implement active-listing and sold-comparable queries, and wire them
+to the Week 2 parser.
 
+### Implementation
 
-# Week 3 – MLS Database Integration
-
-## Objective
-Integrate OpenClaw with the MLS databases by building a reusable MySQL connection layer, implementing active listing and sold comparable queries, and connecting them with the Week 2 NLP property parser.
-
-## Tasks Completed
-
-### 1. MySQL Connection Module
-- Installed `mysql2` and `dotenv`.
-- Configured database credentials using `.env`.
-- Created a reusable MySQL connection pool in `src/db/mysql.ts`.
-- Implemented a generic `query()` helper for parameterized SQL queries.
-- Verified successful connection to the `idx_exchange` database.
-
-**Test**
+**1. MySQL Connection Module**
+- Installed `mysql2` and `dotenv`; configured credentials via `.env`.
+- Built a reusable connection pool in `src/db/mysql.ts`.
+- Implemented a generic `query()` helper for parameterized SQL.
+- Verified connection to `idx_exchange`.
 
 ```bash
 npx ts-node src/db/test.ts
 ```
-
-Output:
-
 ```text
 [ { count: 53122 } ]
 ```
 
----
-
-### 2. Active Listing Search (`rets_property`)
-- Created `searchActiveListings()` to query active MLS listings.
-- Added support for filters from the Week 2 parser:
-  - City
-  - Maximum price
-  - Bedrooms
-  - Bathrooms
-  - Square footage
-  - Property type
-  - Pool
-  - View
-- Implemented pagination using `LIMIT` and `OFFSET`.
-- Sorted results by price (ascending).
-- Used parameterized SQL (`?`) to prevent SQL injection.
-
-**Implementation Notes**
-- Updated the test filters to match the existing `PropertyFilters` type by using `null` for unused fields.
-- Switched from `pool.execute()` to `pool.query()` to resolve the `mysqld_stmt_execute` error with parameterized pagination.
-- Updated the `ListingRow` interface so the `baths` field accepts `number | string`, matching the MySQL return type.
-
-**Test**
+**2. Active Listing Search (`rets_property`)**
+- `searchActiveListings()` supports filters from the Week 2 parser: city, max
+  price, bedrooms, bathrooms, square footage, property type, pool, view.
+- Pagination via `LIMIT`/`OFFSET`; results sorted by price ascending.
+- All SQL parameterized (`?`) to prevent injection.
+- Implementation notes:
+  - Test filters use `null` for unused fields to match the `PropertyFilters` type.
+  - Switched `pool.execute()` → `pool.query()` to fix a `mysqld_stmt_execute`
+    error with parameterized pagination.
+  - `ListingRow.baths` widened to `number | string` to match MySQL's return type.
 
 ```bash
 npx ts-node src/db/activeListings.test.ts
 ```
+Returned the first 10 matching active listings in Irvine under the given filters.
 
-Successfully returned the first 10 matching active listings in Irvine under the specified filters.
-
----
-
-### 3. Sold Comparables Query (`california_sold`)
-- Created `getSoldComps()` to retrieve recently sold residential properties.
-- Added filters for:
-  - City
-  - Number of months (default: 12)
-- Returned the 50 most recent sold properties.
-- Sorted results by closing date (descending).
-- Used parameterized SQL queries.
-
-**Test**
+**3. Sold Comparables Query (`california_sold`)**
+- `getSoldComps()` retrieves recently sold residential properties, filtered
+  by city and a months window (default 12).
+- Returns the 50 most recent sales, sorted by closing date descending.
+- Fully parameterized SQL.
 
 ```bash
 npx ts-node src/db/soldComps.test.ts
 ```
+Successfully retrieved recent sold comparables for the selected city.
 
-Successfully retrieved recent sold comparable properties for the selected city.
-
----
-
-### 4. OpenClaw Property Search Skill
-- Integrated the Week 2 NLP property parser with the Week 3 database queries.
-- Created `propertySearchSkill.ts` to:
-  - Parse natural language property requests.
-  - Query active listings or sold comparables based on the user's request.
-  - Format results into readable property cards.
-- Added `propertySearchSkill.test.ts` to verify the complete workflow.
-
-**Test**
+**4. OpenClaw Property Search Skill**
+- Integrated the Week 2 parser with the Week 3 queries in
+  `propertySearchSkill.ts`:
+  - Parses natural language requests.
+  - Queries active listings or sold comps based on intent.
+  - Formats results into readable property cards.
 
 ```bash
 npx ts-node src/skills/propertySearchSkill.test.ts
 ```
+Returned formatted active listing cards and sold comparable cards correctly.
 
-Successfully returned:
-- Active property listings with formatted property cards.
-- Recent sold comparable properties with formatted property cards.
-
-## Files Created
-
+### Files Created
 ```text
 src/db/
 ├── mysql.ts
@@ -190,28 +205,32 @@ src/skills/
 └── propertySearchSkill.test.ts
 ```
 
-## Status
+### Status
+Week 3 complete. Natural-language requests now parse into filters, query
+both MLS databases with parameterized SQL, and return formatted results.
 
-Completed the Week 3 MLS Database Integration.
+---
 
-The OpenClaw property search skill now accepts natural language property requests, parses search filters, queries both MLS databases using parameterized SQL, and returns formatted active listings and sold comparable property cards.
+## Week 4 — Multi-Turn Conversation Memory
 
-# Week 4 – Multi-Turn Conversation Memory
+### Objective
+Turn the single-message property search into a multi-turn conversation: the
+agent remembers prior responses, asks follow-up questions for missing
+information, and searches once enough criteria are collected.
 
-## Objective
+### Implementation
+- **Session memory** (`src/memory/sessionMemory.ts`): a `Map`-based store
+  keyed per user, tracking city, max budget, bedrooms, bathrooms, square
+  footage, property type, pool/view preference, HOA limit, previous results,
+  and the current conversation step. Sessions can be reset for a new search.
+- **Conversational handler** (`src/skills/conversationalPropertySearch.ts`):
+  - Parses each incoming message with the existing `parsePropertyQuery()`.
+  - Merges only the newly-found filters into the session, preserving earlier ones.
+  - Asks a follow-up question if required fields are still missing.
+  - Once complete, converts the session into a `PropertyFilters` object and
+    calls `searchActiveListings()` from Week 3.
 
-The goal of Week 4 was to extend the property search agent from a single-message workflow into a multi-turn conversation. Instead of requiring users to provide all search criteria in one message, the agent now remembers previous responses, asks follow-up questions for missing information, and performs the database search once enough details have been collected.
-
-## Implementation
-
-A session memory module was created in `src/memory/sessionMemory.ts` using a JavaScript `Map` to store conversation state for each user. Each session keeps track of search preferences such as city, maximum budget, bedrooms, bathrooms, square footage, property type, pool preference, view preference, HOA limit, previous search results, and the current conversation step. The session can also be reset when the user starts a new search.
-
-A new conversational property search handler was implemented in `src/skills/conversationalPropertySearch.ts`. Each incoming message is first parsed using the existing `parsePropertyQuery()` function from Week 3. Only the filters found in the newest message are extracted and merged into the existing session, allowing previously entered preferences to remain unchanged.
-
-After updating the session, the handler checks whether any required information is still missing. If so, it asks the user a follow-up question. Once the required filters have been collected, the handler converts the stored session into a `PropertyFilters` object and calls the existing `searchActiveListings()` function from Week 3 to retrieve matching MLS listings.
-
-For example:
-
+**Example conversation**
 ```text
 User: Find homes in Irvine
 Agent: What is your maximum budget for a home in Irvine?
@@ -223,20 +242,12 @@ User: Single family with at least 3 beds
 Agent: I found 2 matching listings...
 ```
 
-The final search remembers all previously entered information, including the city, budget, property type, and bedroom requirement.
+### Database Updates
+- `src/db/activeListings.ts` now also selects `PhotoCount AS photoCount`.
+- `ListingRow` interface and the listing formatter were updated to include
+  address, city, ZIP, price, bedrooms, bathrooms, square footage, and photo count.
 
-## Database Updates
-
-The active listing query in `src/db/activeListings.ts` was updated to include the property photo count by selecting:
-
-```sql
-PhotoCount AS photoCount
-```
-
-The `ListingRow` interface was updated accordingly, and the listing formatter was modified to display the address, city, ZIP code, price, bedrooms, bathrooms, square footage, and photo count using the correct database field names.
-
-Example output:
-
+**Example output**
 ```text
 1. 14612 Mulberry
 Irvine 92606
@@ -253,79 +264,76 @@ $1,180,000
 24 photos
 ```
 
-## Testing
+### Testing
+- `sessionMemory.test.ts`: sessions can be created, updated, retrieved, and cleared.
+- `conversationalPropertySearch.test.ts`: full multi-turn flow — filters
+  collected across messages, follow-up questions asked correctly, MySQL
+  query executed once complete, formatted results returned with photo counts.
+- **WhatsApp test:** started a guided search for Irvine; the assistant
+  collected budget, property type, and bedrooms step by step, then queried
+  the MLS database. A follow-up message — *"Find homes in Irvine under
+  1.2M with a pool"* — correctly reused the earlier 3-bedroom/condo
+  criteria and applied the new pool filter without re-asking everything.
 
-Session memory was verified in `src/memory/sessionMemory.test.ts`, confirming that sessions could be created, updated, retrieved, and cleared correctly.
-
-The complete multi-turn workflow was tested in `src/skills/conversationalPropertySearch.test.ts`. The test simulated a conversation where the user provided search preferences across multiple messages. The handler successfully remembered previous inputs, asked for missing information, executed the MySQL query after collecting enough filters, and returned formatted listing results with property details and photo counts.
-
-## WhatsApp Testing Summary
-
-Successfully tested the conversational property search through WhatsApp.
-
-- Started a guided conversation by searching for homes in Irvine.
-- The assistant collected search criteria step by step (budget, property type, and bedrooms).
-- After all required information was provided, the assistant queried the MLS database and returned matching listings.
-- Tested conversational memory by sending a follow-up request: **"Find homes in Irvine under 1.2M with a pool."**
-- The assistant remembered the previous criteria (3-bedroom condo) and automatically applied the new pool preference without asking all questions again.
-- Verified that multi-turn conversation, session memory, and dynamic search refinement work correctly through WhatsApp.
-
-## Files Created
-
+### Files Created
 ```text
-
 src/memory/
-
 ├── sessionMemory.ts
-
 └── sessionMemory.test.ts
 
 src/skills/
-
 ├── conversationalPropertySearch.ts
-
 └── conversationalPropertySearch.test.ts
-
 ```
 
-## Files Updated
-
+### Files Updated
 ```text
-
-src/skills/
-
-└── propertySearch.ts
-
-src/db/
-
-└── activeListings.ts
-
+src/skills/propertySearch.ts
+src/db/activeListings.ts
 ```
-## Status
 
-Week 4 successfully introduced session-based conversation memory into the property search agent. The agent now supports natural multi-turn conversations by remembering user preferences across messages, prompting for missing information, reusing the Week 3 MLS search functionality, and returning detailed active listing results once sufficient search criteria have been collected.
+### Status
+Multi-turn session memory working end-to-end, including through WhatsApp.
 
+---
 
-# Week 5 – Market Statistics Agent
+## Week 5 — Market Statistics Agent
 
-## Objective
+### Objective
+Add a market statistics agent that answers questions like average/median
+price, price per square foot, days on market, inventory, and monthly trends,
+using historical MLS sales data.
 
-The goal of Week 5 was to expand the real estate assistant beyond property searches by adding a market statistics agent. Instead of only returning active listings, the agent can now answer market-related questions such as average home prices, median prices, price per square foot, days on market, inventory levels, and monthly market trends using historical MLS sales data.
+### Implementation
 
-## Implementation
+**1. `src/db/marketSummary.ts` — city-wide market summary**
+Calculates, for a given period:
+- Total residential sales
+- Average close price
+- Median close price *(computed in TypeScript, since MySQL has no simple median function)*
+- Average price per square foot
+- Average days on market
+- Average list-to-close price ratio
 
-Three new database modules were created to calculate different market metrics from the `california_sold` and `rets_property` tables.
+**2. `src/db/marketTrends.ts` — monthly trend analysis**
+Groups sales by month and calculates:
+- Monthly sales count
+- Average / median close price
+- Average price per square foot
+- Average days on market
+- Month-over-month and year-over-year price change
 
-The first module, `src/db/marketSummary.ts`, generates a city-wide market summary for a selected time period. It calculates the total number of residential sales, average close price, median close price, average price per square foot, average days on market, and average list-to-close price ratio. Since MySQL does not provide a simple median function, the median sale price is calculated in TypeScript after retrieving and sorting all matching sale prices.
+**3. `src/db/inventoryComparison.ts` — inventory & market condition**
+- Combines active listings (`rets_property`) with recent sales (`california_sold`).
+- Uses average monthly sales pace over the previous 90 days to estimate
+  months of inventory.
+- Classifies the market as **seller's**, **balanced**, or **buyer's**.
 
-The second module, `src/db/marketTrends.ts`, analyzes monthly market activity. Residential sales are grouped by month to calculate monthly sales volume, average sale price, median sale price, average price per square foot, average days on market, and average list-to-close ratio. Additional calculations determine month-over-month and year-over-year price changes, allowing the agent to describe how the market has changed over time.
+**4. `src/skills/marketStatisticsSkill.ts`**
+Parses natural-language market questions, identifies the city and requested
+statistic, calls the right database function, and formats a readable response.
 
-The third module, `src/db/inventoryComparison.ts`, combines active listings from the `rets_property` table with recent sales from `california_sold`. Using the average monthly sales pace over the previous ninety days, the module estimates months of inventory and classifies the market as a seller's market, balanced market, or buyer's market.
-
-A new market statistics skill was implemented in `src/skills/marketStatisticsSkill.ts`. The skill parses natural-language market questions, identifies the requested city and statistic, calls the appropriate database function, and formats the results into readable responses. Supported questions include market summaries, average prices, median prices, price per square foot, days on market, inventory comparisons, and monthly market trends.
-
-For example:
-
+**Examples**
 ```text
 User: What is the median price in Irvine?
 
@@ -333,7 +341,6 @@ Agent:
 The median close price in Irvine over the last 12 months was $1,450,000.
 This is based on 845 residential sales.
 ```
-
 ```text
 User: Is Irvine currently a seller's market?
 
@@ -348,52 +355,30 @@ Months of inventory: 2.6
 Market indicator: Seller's market
 ```
 
-## Database Updates
+### Testing
+- `marketSummary.test.ts`: valid statistics returned for a selected city.
+- `marketTrends.test.ts`: monthly grouping and MoM/YoY calculations verified.
+- `inventoryComparison.test.ts`: inventory math matched expected values.
+- `marketStatisticsSkill.test.ts`: full NLP workflow verified across
+  summaries, median/average price, price/sqft, inventory, trends, and
+  missing-city handling.
 
-Three new database query modules were added.
+### Problems & Solutions
+**Problem:** Locally, all market-statistics functions worked correctly, but
+identical questions sent via WhatsApp returned generic web-based LLM
+answers instead of querying the local MLS database. Root cause: the
+OpenClaw `property-search` skill only described property-search
+capabilities, so market questions weren't recognized as belonging to it.
 
-`marketSummary.ts` retrieves overall city statistics including:
+**Solution:**
+1. Added routing logic in `whatsappPropertySearch.ts` to detect
+   market-statistics questions and call `handleMarketStatisticsQuestion()`,
+   while preserving the Week 4 conversational search flow.
+2. Updated the OpenClaw `property-search` `SKILL.md` to advertise support
+   for market-statistics queries (trends, median/average price, inventory,
+   price/sqft, days on market, buyer's/seller's market).
 
-- Total residential sales
-- Average close price
-- Median close price
-- Average price per square foot
-- Average days on market
-- Average list-to-close ratio
-
-`marketTrends.ts` groups residential sales by month and calculates:
-
-- Monthly sales count
-- Average close price
-- Median close price
-- Average price per square foot
-- Average days on market
-- Month-over-month price change
-- Year-over-year price change
-
-`inventoryComparison.ts` compares:
-
-- Current active MLS listings
-- Sales over the previous 30 days
-- Sales over the previous 90 days
-- Monthly sales pace
-- Months of inventory
-- Overall market condition
-
-## Testing
-
-Each database module was tested independently before integration.
-
-`marketSummary.test.ts` verified that market summaries returned valid statistics for a selected city, including average and median sale prices, price per square foot, days on market, and list-to-close ratios.
-
-`marketTrends.test.ts` confirmed that monthly sales were grouped correctly and that month-over-month and year-over-year price changes were calculated accurately.
-
-`inventoryComparison.test.ts` verified the inventory calculations by comparing active listings with recent sales and confirming that the months of inventory and market condition matched the expected values.
-
-Finally, `marketStatisticsSkill.test.ts` tested the complete natural-language workflow. Questions covering market summaries, median prices, average prices, price per square foot, inventory, market trends, and missing city information were parsed successfully and returned correctly formatted responses.
-
-## Files Created
-
+### Files Created
 ```text
 src/db/
 ├── marketSummary.ts
@@ -408,63 +393,44 @@ src/skills/
 └── marketStatisticsSkill.test.ts
 ```
 
-## Files Updated
-
+### Files Updated
 ```text
-src/
-├── whatsappPropertySearch.ts
-
-~/.openclaw/workspace/skills/
-└── property-search/
-    └── SKILL.md
+src/whatsappPropertySearch.ts
+~/.openclaw/workspace/skills/property-search/SKILL.md
 ```
+
+### Status
+Market statistics agent fully implemented and integrated into WhatsApp.
+Property searches continue via the Week 4 flow; market questions route to
+the new skill — both confirmed to use the local MLS database rather than
+falling back to generic web answers.
 
 ---
 
+## Week 6 — Semantic Property Search with Embeddings
 
-## WhatsApp Integration
+### Objective
+Add the foundation for semantic search: compare the *meaning* of a user's
+query against listing descriptions (not just structured filters) using
+embeddings and cosine similarity.
 
-The Week 5 market statistics agent was integrated into the existing WhatsApp property search workflow.
+### Implementation
 
-During testing, all market-statistics functions worked correctly when executed locally through `whatsappPropertySearch.ts`. However, identical questions sent through WhatsApp returned general web-based responses from the language model instead of querying the local MLS database.
+- **`src/ai/embeddings.ts`** — integrates the OpenAI Node SDK, using
+  `text-embedding-3-small` to convert text into embedding vectors.
+- **`src/db/semanticListings.ts`** — retrieves active properties from
+  `rets_property` and combines type, city, bedrooms, bathrooms, square
+  footage, year built, price, and remarks into one searchable description.
+- **`src/db/listingEmbeddings.ts`** — stores searchable text + embedding
+  vectors in a new `listing_embeddings` table, using
+  `INSERT ... ON DUPLICATE KEY UPDATE` to avoid duplicates. Later extended
+  with `getStoredListingEmbeddings()` for similarity comparisons.
+- **`src/ai/cosineSimilarity.ts`** — compares two vectors and returns a
+  similarity score (higher = more similar).
+- **`src/skills/semanticPropertySearch.ts`** — loads stored embeddings,
+  compares them to a query vector, sorts by similarity, returns top matches.
 
-The issue was not with the TypeScript implementation. The OpenClaw `property-search` skill only described property-search capabilities, so market-statistics questions such as *"Show me the market trend in Irvine"* were not recognized as belonging to the local skill.
-
-The solution consisted of two updates:
-
-- Added routing logic in `whatsappPropertySearch.ts` to detect market-statistics questions and invoke `handleMarketStatisticsQuestion()`, while preserving the existing Week 4 conversational property-search workflow.
-- Updated the OpenClaw `property-search` `SKILL.md` to advertise support for market-statistics queries, including market trends, median price, average price, inventory, price per square foot, days on market, and buyer's/seller's market requests.
-
-After these changes, both property searches and market-statistics questions are correctly routed through the local MLS database from WhatsApp instead of falling back to general web responses.
-
-## Status
-
-Week 5 successfully introduced a dedicated market statistics agent capable of answering natural-language questions using historical MLS sales data. The implementation includes comprehensive market summaries, monthly trend analysis, inventory comparisons, and formatted statistical responses.
-
-The market statistics agent was fully integrated into the existing WhatsApp property search workflow. Property-search requests continue to use the Week 4 conversational flow, while market-statistics questions are automatically routed to the new market statistics skill. Testing confirmed that both workflows operate correctly through the local application and OpenClaw WhatsApp integration, with all responses sourced from the local MLS database.
-
-# Week 6 – Semantic Property Search with Embeddings
-
-## Objective
-
-The goal of Week 6 was to expand the property search agent by adding the foundation for semantic search using embeddings. Instead of relying only on structured filters such as city, price, bedrooms, and property type, semantic search allows the system to compare the meaning of a user's natural-language request with property listing descriptions and return the most relevant matches.
-
-## Implementation
-
-Several new modules were created to support embedding generation, storage, retrieval, and cosine similarity search.
-
-The first module, `src/ai/embeddings.ts`, integrates the OpenAI Node SDK and uses the `text-embedding-3-small` model to convert text into numerical embedding vectors. These vectors represent the semantic meaning of property descriptions and user search queries.
-
-The second module, `src/db/semanticListings.ts`, retrieves active properties from the `rets_property` table and converts each listing into searchable text. Important MLS fields such as property type, city, bedrooms, bathrooms, square footage, year built, price, and listing remarks are combined into one description that can be converted into an embedding.
-
-The third module, `src/db/listingEmbeddings.ts`, stores the searchable text and embedding vectors in a new MySQL table called `listing_embeddings`. The module uses `INSERT ... ON DUPLICATE KEY UPDATE` so an existing listing embedding can be updated without creating a duplicate. It was later extended with `getStoredListingEmbeddings()` to retrieve stored vectors for similarity comparisons.
-
-A cosine similarity helper was implemented in `src/ai/cosineSimilarity.ts`. The function compares two embedding vectors and returns a similarity score. Higher scores represent vectors that are more similar in meaning.
-
-Finally, `src/skills/semanticPropertySearch.ts` combines the database retrieval and cosine similarity logic. It loads the stored listing embeddings, compares them against a query vector, sorts the results from highest to lowest similarity, and returns the top matching properties.
-
-For example, the local semantic search test returned:
-
+**Example result**
 ```text
 Results:
 
@@ -481,38 +447,7 @@ Similarity: 0.2673
 Test listing for semantic search.
 ```
 
-The results confirmed that listings represented by similar vectors were ranked higher than less-related listings.
-
-## Database Updates
-
-A new `listing_embeddings` table was added to the `idx_exchange` database.
-
-The table stores:
-
-- Listing ID
-- Searchable listing description
-- Embedding vector in JSON format
-- Embedding model
-- Created timestamp
-- Updated timestamp
-
-The `listing_id` field is unique so that each property has one current embedding record.
-
-The `listingEmbeddings.ts` database module supports:
-
-- Saving embedding vectors
-- Updating existing embedding vectors
-- Retrieving stored vectors
-- Converting stored JSON embeddings back into TypeScript number arrays
-
-These stored vectors can then be passed to the cosine similarity function for semantic ranking.
-
-## Cosine Similarity Search
-
-Cosine similarity was implemented to compare the query vector with each stored property vector.
-
-The semantic property search process follows this workflow:
-
+### Semantic Search Workflow
 ```text
 User Query Vector
         ↓
@@ -527,65 +462,48 @@ Sort Highest to Lowest
 Return Top Matching Listings
 ```
 
-Local testing used sample vectors because live OpenAI embedding generation was unavailable from the current development region.
+### Database Updates
+New `listing_embeddings` table (unique on `listing_id`), storing:
+- Listing ID
+- Searchable listing description
+- Embedding vector (JSON)
+- Embedding model
+- Created / updated timestamps
 
-The test successfully produced similarity scores of:
+### Testing
+- `embeddings.test.ts`: SDK, env vars, and model config confirmed correct;
+  request reached OpenAI but was blocked (see below).
+- `semanticListings.test.ts`: active listings converted into searchable text correctly.
+- `listingEmbeddings.test.ts`: sample vectors stored correctly as JSON.
+- `listingEmbeddings.read.test.ts`: stored embeddings correctly retrieved
+  and converted back to number arrays.
+- `cosineSimilarity.test.ts`: identical vectors → similarity `1`; unrelated
+  vectors → similarity `0`.
+- `semanticPropertySearch.test.ts`: full local similarity search — load,
+  score, sort, return top results — verified end-to-end.
 
-```text
-TEST_A   → 1.0000
-TEST_C   → 0.9939
-TEST123  → 0.2673
-```
-
-This confirmed that the cosine similarity implementation correctly identifies and ranks the most similar vectors.
-
-## Testing
-
-Each module was tested independently before combining them into the semantic property search workflow.
-
-`embeddings.test.ts` tested the OpenAI embedding helper and confirmed that the SDK, environment variables, and embedding model were configured correctly. The request successfully reached the OpenAI API but was blocked by a regional access restriction.
-
-`semanticListings.test.ts` verified that active MLS listings could be retrieved from `rets_property` and converted into searchable natural-language descriptions containing the important property information.
-
-`listingEmbeddings.test.ts` tested the embedding storage logic using sample vectors. The vectors were successfully stored in the MySQL `listing_embeddings` table as JSON data.
-
-`listingEmbeddings.read.test.ts` verified that stored embeddings could be retrieved from MySQL and converted back into number arrays for similarity calculations.
-
-`cosineSimilarity.test.ts` tested the similarity calculation using simple vectors. Identical vectors returned a similarity score of `1`, while unrelated test vectors returned a score of `0`.
-
-Finally, `semanticPropertySearch.test.ts` tested the complete local similarity search workflow. The test loaded stored vectors, calculated cosine similarity for each listing, sorted the results by similarity score, and successfully returned the highest-ranked listings.
-
-## Problem Encountered
-
-During testing, the OpenAI Embeddings API returned:
-
+### Problems & Solutions
+**Problem:** The OpenAI Embeddings API returned:
 ```text
 403 Country, region, or territory not supported
 ```
+The TypeScript implementation reached the API correctly, but requests were
+rejected because development was being done from Hong Kong, which is
+subject to a regional access restriction. This meant real MLS/query
+embeddings could not be generated.
 
-The TypeScript implementation successfully reached the OpenAI API, but the request was rejected because development was being performed from Hong Kong, where the API request was subject to a regional access restriction.
-
-Because the OpenAI API is responsible for converting real property descriptions and user queries into embeddings, real MLS embeddings could not be generated from the current development environment.
-
-## Temporary Solution
-
-To continue development despite the API restriction, sample embedding vectors were used to test the remaining semantic search pipeline locally.
-
-The temporary vectors allowed the following functionality to be completed and verified:
-
+**Temporary solution:** Used sample embedding vectors to test the rest of
+the pipeline locally. This validated:
 - MySQL embedding storage
-- Embedding retrieval
-- JSON vector conversion
+- Embedding retrieval and JSON ⇄ array conversion
 - Cosine similarity calculation
-- Similarity ranking
-- Top-result selection
+- Similarity ranking and top-result selection
 
-Instead of generating the query vector through the OpenAI API, the local test supplied a sample vector directly. This allowed the cosine similarity search to be developed independently of the external API.
+Once OpenAI access is available, the sample query vector can be replaced by
+a real `createEmbedding()` call — no changes needed to storage, similarity,
+or ranking logic.
 
-Once OpenAI API access is available, the sample query vector can be replaced with a real embedding generated from the user's free-text request using `createEmbedding()`. The existing storage, cosine similarity, and ranking logic can then be reused without architectural changes.
-
-## Files Created
-
+### Files Created
 ```text
 src/ai/
 ├── embeddings.ts
@@ -605,353 +523,105 @@ src/skills/
 └── semanticPropertySearch.test.ts
 ```
 
-## Files Updated
-
+### Files Updated
 ```text
-src/db/
-└── listingEmbeddings.ts
+src/db/listingEmbeddings.ts   (added retrieval, not just saving)
 ```
 
-The `listingEmbeddings.ts` module was updated to retrieve stored embedding vectors in addition to saving them, allowing the vectors to be used by the cosine similarity search.
+### Status
+Semantic search foundation complete and verified with sample vectors.
+Note: Live OpenAI embedding generation blocked by regional restriction
+(Hong Kong dev environment); architecture is ready to swap in real
+embeddings without changes.
 
-## Status
+---
 
-Week 6 successfully introduced the foundation for semantic property search using embeddings and cosine similarity. The implementation now supports converting MLS listings into searchable descriptions, storing and retrieving embedding vectors, calculating cosine similarity scores, ranking listings by semantic similarity, and returning the most relevant results.
+## Week 7 — Hybrid Property Recommendation Engine
 
-The cosine similarity search was successfully tested locally using sample vectors. Live OpenAI embedding generation remains temporarily unavailable because of the regional API restriction encountered while developing from Hong Kong. Once API access is available, the temporary vectors can be replaced with real listing and query embeddings without changing the existing semantic search architecture.
+### Objective
+Given a specific active listing, recommend similar properties by combining
+**structured MLS similarity** (up to 60 points) with **semantic/embedding
+similarity** (up to 40 points) for a score out of 100 — then validate each
+recommendation's asking price against recent comparable sales.
 
-# Week 7 – Hybrid Property Recommendation Engine
+### Implementation
 
-## Objective
+**1. Local embedding helper — `src/ai/localEmbedding.ts`**
+A temporary, deterministic replacement for OpenAI embeddings (still
+unavailable — see Week 6):
+- Normalizes input text, splits into tokens.
+- Hashes each token with SHA-256.
+- Maps tokens into one of 64 vector positions with deterministic +/- values.
+- Normalizes into a fixed 64-dimensional vector.
+- Same text → same vector every time, so it's safe for testing.
 
-The goal of Week 7 was to expand the real estate assistant by adding a hybrid property recommendation engine. Instead of only searching for properties using filters or semantic similarity, the new recommendation system can take a specific active listing and return similar properties by combining structured MLS data with embedding-based similarity.
+**2. Real embedding population — `src/db/populateListingEmbeddings.ts`**
+- Pulls real active listings from `rets_property`.
+- Builds searchable text from city, property type, approx. square footage,
+  and approx. price, e.g.:
+  ```text
+  city Beverly Hills property type 4 approximately 3750 square feet approximately 4000000 dollars
+  ```
+- Stores the resulting vector in `listing_embeddings` with
+  `embedding_model = local-test-64`, reusing the Week 6 storage layer.
 
-The recommendation engine calculates a score out of 100 points. Structured property similarity contributes up to 60 points, while semantic similarity contributes up to 40 points.
+**3. Recommendation engine — `src/skills/recommendationEngine.ts`**
+Loads active listings + stored vectors, scores each candidate, sorts, and
+returns the top 5.
 
-The recommended properties are then validated using historical sales from the `california_sold` table. This allows the system to compare each recommendation's asking price against recent comparable sales and provide a simple pricing assessment.
+*Structured score (max 60):*
+| Factor | Max points | Rule |
+|---|---|---|
+| Price similarity | 20 | <$50k diff → 20, <$150k → 12, <$300k → 5 |
+| Property type match | 15 | exact numeric code match |
+| City match | 15 | exact match |
+| Square footage similarity | 10 | <300 sqft diff → 10, <700 sqft → 5 |
 
-## Implementation
-
-Several new modules were created to support local embedding generation, real MLS embedding population, hybrid recommendation scoring, and comparable-sales validation.
-
-The first module, `src/ai/localEmbedding.ts`, was created as a temporary local embedding helper. Since live OpenAI embedding generation was unavailable during development, the helper generates deterministic 64-dimensional vectors from listing text. The text is normalized, split into tokens, hashed using SHA-256, mapped into vector positions, and normalized into a fixed-length embedding.
-
-The same listing text always generates the same vector, allowing the semantic recommendation pipeline to be tested without depending on the external embedding API.
-
-The second module, `src/db/populateListingEmbeddings.ts`, retrieves real active properties from the `rets_property` table and converts selected MLS fields into searchable text. The searchable text includes the city, property type, approximate square footage, and approximate listing price.
-
-For example:
-
-```text
-city Beverly Hills property type 4 approximately 3750 square feet approximately 4000000 dollars
-```
-
-The searchable text is passed to the local embedding helper and stored in the existing `listing_embeddings` table using:
-
-```text
-embedding_model = local-test-64
-```
-
-This allowed real active MLS listings to use the Week 6 embedding storage infrastructure.
-
-The main hybrid recommendation logic was implemented in `src/skills/recommendationEngine.ts`. The engine loads active MLS properties from `rets_property`, loads their corresponding stored vectors from `listing_embeddings`, calculates structured similarity and semantic similarity, combines the scores, sorts the results, and returns the top five recommendations.
-
-The structured score contributes a maximum of 60 points:
-
-```text
-Price similarity          → 20 points
-Property type similarity  → 15 points
-City similarity           → 15 points
-Square footage similarity → 10 points
-```
-
-Price similarity is scored using the difference between the target property and candidate listing:
-
-```text
-Difference < $50,000   → 20 points
-Difference < $150,000  → 12 points
-Difference < $300,000  → 5 points
-```
-
-Square footage similarity is scored using:
-
-```text
-Difference < 300 sqft → 10 points
-Difference < 700 sqft → 5 points
-```
-
-Semantic similarity contributes up to 40 points and is calculated using cosine similarity:
-
+*Semantic score (max 40):*
 ```text
 semantic score = cosine similarity × 40
 ```
 
-The final hybrid score is therefore:
-
+*Total:*
 ```text
-structured score + semantic score = total score / 100
+total score = structured score + semantic score   (out of 100)
 ```
+The target listing is excluded from its own results.
 
-For example:
-
+**Example (structured 25/60, semantic 30.06/40):**
 ```text
 Structured: 25/60
 Semantic: 30.06/40
 Total: 55.06/100
 ```
 
-The target listing is excluded from its own recommendation results, and all candidate properties are sorted from highest to lowest total score.
-
-## Local Embedding Helper
-
-At the beginning of Week 7, the existing `listing_embeddings` table contained only the Week 6 test records:
-
-```text
-TEST_A
-TEST_B
-TEST_C
-TEST123
-```
-
-A database query confirmed that none of the active MLS listings had a matching stored embedding:
-
-```text
-active_with_embeddings = 0
-```
-
-Because the OpenAI embedding API was unavailable, real MLS listings could not immediately be embedded using `text-embedding-3-small`.
-
-To continue development, a local deterministic embedding helper was created in:
-
-```text
-src/ai/localEmbedding.ts
-```
-
-The helper generates a 64-dimensional vector by:
-
-- Normalizing the input text
-- Splitting the text into tokens
-- Hashing each token with SHA-256
-- Mapping each token into one of 64 vector positions
-- Assigning deterministic positive or negative values
-- Normalizing the final vector
-
-The helper was tested using similar and unrelated property descriptions. Similar descriptions produced higher cosine similarity scores than unrelated descriptions.
-
-This local helper is intended only as a temporary development fallback. Once OpenAI embedding access becomes available, the `local-test-64` vectors can be replaced by real `text-embedding-3-small` embeddings without changing the recommendation architecture.
-
-## Database Updates
-
-The existing `listing_embeddings` table from Week 6 was reused for Week 7.
-
-Real active listings from `rets_property` were converted into searchable text and stored with local embeddings.
-
-Example stored records included:
-
-```text
-1118422731
-city Beverly Hills property type 4 approximately 3750 square feet approximately 4000000 dollars
-local-test-64
-```
-
-```text
-1118405579
-city Carmel Valley property type 4 approximately 2750 square feet approximately 2900000 dollars
-local-test-64
-```
-
-This connected real MLS listing IDs with stored embedding vectors and allowed the hybrid recommendation engine to operate on real data.
-
-The recommendation engine uses the following fields from `rets_property`:
-
-- `L_ListingID`
-- `L_SystemPrice`
-- `L_City`
-- `L_Keyword2`
-- `LM_Int2_3`
-- `L_Status`
-
-During development, it was discovered that `L_Keyword2` contains numeric property-type codes instead of property-type names.
-
-For example:
-
-```text
-1
-2
-3
-4
-5
-6
-```
-
-The recommendation interface was therefore changed from:
-
-```text
-propertyType: string
-```
-
-to:
-
-```text
-propertyType: number
-```
-
-Candidate properties now receive the 15 property-type similarity points when their numeric property-type code matches the target listing.
-
-## Recommendation Testing
-
-The recommendation engine was tested using the real active listing:
-
-```text
-Listing ID: 1118422731
-City: Beverly Hills
-Price: $3,950,000
-Property Type: 4
-Square Feet: 3,677
-```
-
-The test command was:
-
-```bash
-npx ts-node src/skills/recommendationEngine.test.ts 1118422731
-```
-
-The recommendation engine successfully returned five real MLS properties ranked by hybrid score:
-
-```text
-1. 1114632206
-   Carmel Valley | 4
-   $1,595,000 | 3,597 sqft
-   Structured: 25/60
-   Semantic: 30.06/40
-   Total: 55.06/100
-
-2. 1117769987
-   Eastvale | 4
-   $1,060,000 | 3,257 sqft
-   Structured: 20/60
-   Semantic: 29.81/40
-   Total: 49.81/100
-
-3. 1114685551
-   Glendora | 6
-   $3,998,000 | 6,789 sqft
-   Structured: 20/60
-   Semantic: 29.81/40
-   Total: 49.81/100
-
-4. 1114971480
-   Diamond Bar | 5
-   $3,980,000 | 6,352 sqft
-   Structured: 20/60
-   Semantic: 29.33/40
-   Total: 49.33/100
-
-5. 1116237080
-   Lake Arrowhead | 4
-   $985,000 | 3,087 sqft
-   Structured: 20/60
-   Semantic: 28.64/40
-   Total: 48.64/100
-```
-
-This confirmed that the recommendation engine successfully:
-
-- Loaded real active MLS listings
-- Loaded stored embeddings
-- Calculated structured similarity
-- Calculated cosine similarity
-- Generated semantic similarity scores
-- Combined both scores into a score out of 100
-- Excluded the target property
-- Ranked candidates correctly
-- Returned the top five recommendations
-
-## Comparable Sales Validation
-
-A new database module, `src/db/compValidation.ts`, was created to validate each recommended property's asking price using historical sales from `california_sold`.
-
-The module searches for comparable properties using:
-
+**4. Comparable sales validation — `src/db/compValidation.ts`**
+For each recommended property, searches `california_sold` for comps where:
 - Same city
 - `PropertyType = Residential`
 - Living area within ±20% of the recommendation
-- Close date within the previous six months
-- Valid close price
-- Valid living area
+- Close date within the previous 6 months
+- Valid close price and living area
 
-The system calculates the average sold price per square foot:
-
+Calculations:
 ```text
-Average $/sqft =
-Average of ClosePrice / LivingArea
+Average $/sqft = average(ClosePrice / LivingArea)
+Estimated Comp Value = Average $/sqft × Recommendation Square Footage
+deltaPct = (List Price − Comp Estimate) / Comp Estimate × 100
 ```
 
-The estimated comp-supported value is then calculated using:
-
+**Pricing assessment thresholds:**
 ```text
-Estimated Comp Value =
-Average Sold $/sqft × Recommendation Square Footage
+deltaPct <= -5%         → Below recent comp estimate
+-5% < deltaPct < +5%     → Near recent comp estimate
+deltaPct >= +5%          → Above recent comp estimate
 ```
+Wording is intentionally conservative — the comp model doesn't account for
+neighborhood, renovation quality, condition, views, lot characteristics, or
+special amenities.
 
-The asking price is compared against this estimate using:
-
-```text
-(List Price - Comp Estimate)
-----------------------------
-       Comp Estimate
-
-× 100
-```
-
-The resulting percentage is stored as `deltaPct`.
-
-## Comparable Sales Testing
-
-The comp validation module was tested independently using the Beverly Hills property.
-
-The test command was:
-
-```bash
-npx ts-node src/db/compValidation.test.ts
-```
-
-The result was:
-
-```text
-Comp validation result:
-{
-  compPrice: 5765154,
-  listPrice: 3950000,
-  compCount: 32,
-  avgPricePerSqft: 1567.9,
-  deltaPct: -31.5
-}
-```
-
-Formatted:
-
-```text
-Comps used: 32
-Average sold $/sqft: $1567.9
-Estimated comp value: $5,765,154
-List price: $3,950,000
-Difference: -31.5%
-```
-
-This confirmed that the comparable-sales query, average price-per-square-foot calculation, estimated comp value, and price difference calculation all worked correctly.
-
-## Recommendation Skill
-
-A higher-level recommendation skill was implemented in:
-
-```text
-src/skills/recommendationSkill.ts
-```
-
-The skill combines the recommendation engine with comparable-sales validation.
-
-The workflow is:
+**5. Recommendation skill — `src/skills/recommendationSkill.ts`**
+Combines the recommendation engine with comp validation:
 
 ```text
 Target Listing
@@ -960,8 +630,7 @@ Hybrid Recommendation Engine
         ↓
 Top 5 Similar Listings
         ↓
-Validate Each Listing
-Using california_sold
+Validate Each Listing Using california_sold
         ↓
 Calculate Comp Estimate
         ↓
@@ -970,199 +639,90 @@ Compare List Price
 Format Final Response
 ```
 
-Each recommendation includes:
+Each result includes: listing ID, city, property type, price, sqft,
+structured/semantic/total scores, estimated comp value, avg $/sqft, comp
+count, list-price delta, and pricing assessment.
 
-- Listing ID
-- City
-- Property type
-- Listing price
-- Square footage
-- Structured similarity score
-- Semantic similarity score
-- Total similarity score
-- Estimated comp-supported value
-- Average sold price per square foot
-- Number of comparable sales used
-- List-price difference from the comp estimate
-- Pricing assessment
+### Testing
 
-The pricing assessment uses:
-
+**Recommendation engine test** — target listing:
 ```text
-Delta <= -5%
-→ Below recent comp estimate
+Listing ID: 1118422731
+City: Beverly Hills
+Price: $3,950,000
+Property Type: 4
+Square Feet: 3,677
+```
+```bash
+npx ts-node src/skills/recommendationEngine.test.ts 1118422731
+```
+Returned 5 ranked real MLS properties (top result: Carmel Valley,
+$1,595,000, 3,597 sqft, total score 55.06/100).
 
-Delta between -5% and +5%
-→ Near recent comp estimate
-
-Delta >= +5%
-→ Above recent comp estimate
+**Comp validation test** (Beverly Hills property):
+```bash
+npx ts-node src/db/compValidation.test.ts
+```
+```text
+compPrice: 5,765,154
+listPrice: 3,950,000
+compCount: 32
+avgPricePerSqft: 1567.9
+deltaPct: -31.5
 ```
 
-The wording is intentionally conservative because the current comp model does not account for every property characteristic, such as exact neighborhood, renovation quality, condition, views, lot characteristics, or special amenities.
-
-## Complete Recommendation Testing
-
-The complete recommendation pipeline was tested using:
-
+**Full pipeline test:**
 ```bash
 npx ts-node src/skills/recommendationSkill.test.ts 1118422731
 ```
-
-The system returned five recommended active properties and performed individual historical comp analysis for each listing.
-
-For example:
-
+Returned all 5 recommendations with individual comp analysis, e.g.:
 ```text
-1. Listing 1114632206
-Carmel Valley | Property Type 4
+1. Listing 1114632206 — Carmel Valley | Type 4
 $1,595,000 | 3,597 sqft
-Similarity: 55.06/100
-  Structured: 25/60
-  Semantic: 30.06/40
-Recent comp estimate: $2,947,816
-Average sold $/sqft: $819.52
-Comp sales used: 10
-List vs comps: -45.9%
-Assessment: Below recent comp estimate
-```
+Similarity: 55.06/100 (Structured 25/60, Semantic 30.06/40)
+Recent comp estimate: $2,947,816 | Avg $/sqft: $819.52 | Comps used: 10
+List vs comps: -45.9% → Below recent comp estimate
 
-Another recommendation returned:
-
-```text
-2. Listing 1117769987
-Eastvale | Property Type 4
+2. Listing 1117769987 — Eastvale | Type 4
 $1,060,000 | 3,257 sqft
-Similarity: 49.81/100
-  Structured: 20/60
-  Semantic: 29.81/40
-Recent comp estimate: $1,039,574
-Average sold $/sqft: $319.18
-Comp sales used: 71
-List vs comps: +2%
-Assessment: Near recent comp estimate
+Similarity: 49.81/100 (Structured 20/60, Semantic 29.81/40)
+Recent comp estimate: $1,039,574 | Avg $/sqft: $319.18 | Comps used: 71
+List vs comps: +2% → Near recent comp estimate
 ```
 
-This confirmed that recommendation ranking and comparable-sales validation successfully operate together in one workflow.
+### Problems & Solutions
 
-## Problems Encountered
+| Problem | Solution |
+|---|---|
+| `listing_embeddings` had only 4 Week 6 test records — no real listings had embeddings | Built `populateListingEmbeddings.ts` to embed real active listings |
+| OpenAI embeddings still unavailable (Week 6 access issue) | Built `localEmbedding.ts` deterministic 64-dim fallback |
+| `L_Keyword2` assumed to hold property-type *names*, but actually holds numeric codes (1–6) | Changed `propertyType` from `string` → `number`; compare by numeric equality |
+| A `california_sold` record had `CloseDate = 2072-06-29` (invalid future date), which a one-sided "greater than 6 months ago" filter would wrongly include | Changed the comp query to `CloseDate BETWEEN DATE_SUB(CURDATE(), INTERVAL 6 MONTH) AND CURDATE()` |
+| Comp availability varies a lot by city (Eastvale: 71 comps, Glendora: 1, Diamond Bar: 2) | `compCount` is included in every recommendation for transparency; a future version could add a minimum-comp threshold or confidence score |
 
-The first issue was that the `listing_embeddings` table contained only the four Week 6 test embeddings. None of the real active MLS listings had matching vectors, so the hybrid recommendation engine initially had no real candidates to compare.
+### WhatsApp Integration
+- Added a listing-ID detector for requests like *"Show me homes similar to
+  listing 1118422731"*.
+- New routing order:
+  ```text
+  Incoming Message
+          ↓
+  Recommendation Request? ── yes → handleRecommendationQuestion()
+          ↓ no
+  Market Statistics Question? ── yes → handleMarketStatisticsQuestion()
+          ↓ no
+  Conversational Property Search (handlePropertyConversation)
+  ```
+- **Bug found:** the detector existed but wasn't called inside the main
+  routing function, so recommendation requests fell through to the
+  conversational search agent (incorrectly asking "What city would you
+  like to search in?").
+- **Fix:** call `extractRecommendationListingId()` before checking for
+  market-statistics questions or falling through to property search.
+- Re-tested `"Find homes in Irvine"` afterward to confirm the Week 4 flow
+  still worked unchanged.
 
-This was solved by creating `populateListingEmbeddings.ts`, which retrieves real active MLS listings, creates searchable listing text, generates local embeddings, and stores them in `listing_embeddings`.
-
-The second issue was that live OpenAI embeddings could not be generated because of the existing API access and connection problems from Week 6.
-
-To avoid blocking Week 7 development, `localEmbedding.ts` was created. The helper generates deterministic 64-dimensional vectors locally, allowing the entire recommendation system to be developed and tested without external embedding generation.
-
-The third issue was the property-type field. The recommendation engine initially assumed `L_Keyword2` contained string property names. Database inspection showed that the field actually contains numeric codes.
-
-The recommendation interface was updated so `propertyType` is stored as a number and property types are compared using direct numeric equality.
-
-The fourth issue was discovered while inspecting `california_sold`. One historical record contained:
-
-```text
-CloseDate = 2072-06-29
-```
-
-A query that only checked whether the close date was greater than six months ago would incorrectly include this future record.
-
-The comp query was changed from a one-sided condition to:
-
-```sql
-CloseDate BETWEEN
-    DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-    AND CURDATE()
-```
-
-This prevents invalid future dates from entering the recent comparable-sales calculation.
-
-Another limitation discovered during comp testing was that the number of available comps varies by location.
-
-For example:
-
-```text
-Eastvale → 71 comps
-Glendora → 1 comp
-Diamond Bar → 2 comps
-```
-
-The current implementation includes `compCount` in every recommendation so the amount of supporting historical data remains visible. A future version could add a minimum comp threshold or confidence score.
-
-## WhatsApp Integration
-
-The Week 7 recommendation engine was integrated into the existing `whatsappPropertySearch.ts` routing workflow.
-
-A recommendation listing-ID detector was added to recognize requests such as:
-
-```text
-Show me homes similar to listing 1118422731
-```
-
-The routing order is now:
-
-```text
-Incoming Message
-        ↓
-Recommendation Request?
-        ↓ No
-Market Statistics Question?
-        ↓ No
-Conversational Property Search
-```
-
-Recommendation questions are routed to:
-
-```text
-handleRecommendationQuestion()
-```
-
-Market-statistics questions continue to use:
-
-```text
-handleMarketStatisticsQuestion()
-```
-
-All remaining property-search requests continue to use the existing Week 4 conversational workflow:
-
-```text
-handlePropertyConversation()
-```
-
-During the first routing test, the recommendation request:
-
-```bash
-npx ts-node src/whatsappPropertySearch.ts test-user "Show me homes similar to listing 1118422731"
-```
-
-incorrectly returned:
-
-```text
-Current session: { conversationStep: 1 }
-What city would you like to search in?
-```
-
-The recommendation detector had been implemented, but it was not being called inside the main routing function. Because of this, recommendation requests were falling through to the normal conversational property-search agent.
-
-The solution was to call `extractRecommendationListingId()` before checking market-statistics questions or invoking the normal property-search workflow.
-
-The existing property-search route was tested again using:
-
-```bash
-npx ts-node src/whatsappPropertySearch.ts test-user "Find homes in Irvine"
-```
-
-Result:
-
-```text
-Current session: { conversationStep: 1, city: 'Irvine' }
-What is your maximum budget for a home in Irvine?
-```
-
-This confirmed that the Week 7 routing changes preserved the existing Week 4 property-search behavior.
-
-## Files Created
-
+### Files Created
 ```text
 src/ai/
 ├── localEmbedding.ts
@@ -1180,47 +740,334 @@ src/skills/
 └── recommendationSkill.test.ts
 ```
 
-## Files Updated
-
+### Files Updated
 ```text
-src/
-└── whatsappPropertySearch.ts
+src/whatsappPropertySearch.ts
 ```
 
-The existing Week 6 `listing_embeddings` infrastructure was reused for storing and retrieving real listing vectors.
+### Status
+Hybrid recommendation engine (structured + semantic scoring) complete,
+returning ranked top-5 recommendations with comp-based pricing assessments.
+Integrated into WhatsApp/CLI routing without breaking Weeks 4–5.
+Note: Still using the `local-test-64` embedding fallback pending OpenAI access.
 
-## Status
+---
 
-Week 7 successfully introduced a hybrid property recommendation engine that combines structured MLS similarity with embedding-based semantic similarity.
+## Week 8 — Retrieval-Augmented Generation (RAG)
 
-The recommendation engine can now take a real active MLS listing, compare it against other active properties, calculate a structured score out of 60, calculate a semantic score out of 40, combine the scores into a total similarity score out of 100, rank the candidates, and return the top five recommendations.
+### Objective
+Add a document-aware RAG system so the assistant answers real-estate
+terminology / MLS field / market-metric questions using retrieved local
+documents as grounded context, instead of relying on unconstrained model
+knowledge.
 
-Each recommended property is also validated using historical sales from `california_sold`. The system calculates average sold price per square foot, estimates a comparable-sales-supported property value, compares the current asking price against that estimate, and returns a simple below, near, or above recent comp assessment.
+### Implementation
 
-A temporary deterministic local embedding helper was introduced because real OpenAI embedding generation remained unavailable during development. Real MLS listings are currently stored using the `local-test-64` embedding model. Once OpenAI API access is available, these temporary vectors can be replaced with `text-embedding-3-small` embeddings without changing the recommendation engine, cosine similarity logic, database storage, ranking system, or comp-validation architecture.
-
-The Week 7 recommendation skill was integrated into the existing WhatsApp/CLI routing system while preserving both the Week 4 conversational property search and the Week 5 market statistics agent.
-
-The complete Week 7 workflow now supports:
-
+**Pipeline**
 ```text
-Target Active Listing
-        ↓
-Structured MLS Similarity
-        +
-Semantic Vector Similarity
-        ↓
-Hybrid Score / 100
-        ↓
-Top 5 Active Recommendations
-        ↓
-Historical Sold Comp Validation
-        ↓
-Estimated Comp Value
-        ↓
-Price Assessment
-        ↓
-Formatted Recommendation Response
+User Question
+      ↓
+Knowledge Documents
+      ↓
+Text Chunking
+      ↓
+Knowledge Index
+      ↓
+Relevant Chunk Retrieval
+      ↓
+Grounded Context
+      ↓
+RAG Answer
 ```
 
-Week 7 successfully completed the hybrid recommendation and comparable-sales validation layer of the real estate assistant.
+**Knowledge base** (`src/knowledge/`):
+- `real-estate-glossary.md` — DOM, escrow, comparable sales, cap rate,
+  list-to-close ratio, etc.
+- `mls-fields.md` — field documentation for `rets_property` / `california_sold`.
+- `market-metrics.md` — terminology from the Week 5 market agent (median
+  close price, avg price/sqft, inventory, DOM, list-to-close ratio).
+
+**Modules:**
+- `src/rag/knowledgeDocuments.ts` — loads knowledge files into structured documents.
+- `src/rag/chunkText.ts` — splits documents into ~600-character overlapping
+  chunks (100-character overlap).
+- `src/rag/ragIndex.ts` — converts chunks into searchable knowledge records.
+- `src/rag/ragRetriever.ts` — compares a question against indexed chunks and
+  returns the most relevant sources.
+- `src/rag/ragAnswer.ts` — builds grounded context from retrieved chunks and
+  instructs the assistant to answer *only* from retrieved information,
+  avoiding invented MLS definitions.
+- `src/skills/ragSkill.ts` — identifies knowledge questions and routes them
+  through the RAG pipeline.
+
+Because live OpenAI embeddings were still unavailable, Week 8 uses
+deterministic **local lexical retrieval** as a development fallback. Real
+semantic embeddings can later replace it without changing the rest of the
+pipeline.
+
+**Example**
+```text
+Q: What is L_Status used for?
+→ Retrieved from: MLS Field Definitions
+
+L_Status
+Current listing status.
+The property search system uses Active to identify currently active listings.
+```
+
+### Testing
+```text
+What does DOM mean?                      → Real Estate Glossary
+What is L_Status used for?               → MLS Field Definitions
+What is escrow?                          → Real Estate Glossary
+What is a list-to-close price ratio?     → Real Estate Glossary / Market Statistics Metrics
+```
+Unsupported field test:
+```text
+What does XYZ_UNKNOWN_999 mean?
+→ "I don't have enough information in the indexed knowledge sources to answer that."
+```
+Confirms the grounding layer correctly rejects unsupported questions.
+
+### Problems & Solutions
+| Problem | Solution |
+|---|---|
+| OpenAI embeddings still unavailable (same regional restriction as Week 6) | Used a local lexical retrieval fallback so RAG could still be built and tested |
+| Initial hashed-vector approach caused hash collisions, ranking unrelated docs too highly | Switched to lexical token matching for more reliable retrieval |
+| Generic words like "mean" caused unknown MLS fields to match unrelated documents | Added stop-word filtering so unsupported fields correctly return no context |
+
+### Files Created
+```text
+src/knowledge/
+├── real-estate-glossary.md
+├── mls-fields.md
+└── market-metrics.md
+
+src/rag/
+├── types.ts
+├── chunkText.ts
+├── chunkText.test.ts
+├── knowledgeDocuments.ts
+├── knowledgeDocuments.test.ts
+├── ragIndex.ts
+├── ragIndex.test.ts
+├── ragRetriever.ts
+├── ragRetriever.test.ts
+├── ragAnswer.ts
+└── ragAnswer.test.ts
+
+src/skills/
+├── ragSkill.ts
+└── ragSkill.test.ts
+```
+
+### Status
+Core document-aware RAG pipeline complete: load → chunk → retrieve →
+ground → answer, with correct rejection of unsupported questions.
+
+**Possible future knowledge sources** (can be added to `src/knowledge/`
+without architecture changes):
+- Complete `rets_property` / `california_sold` field mappings
+- IDX Exchange internal documentation
+- California real estate law summaries
+- California disclosure requirements
+- Additional market reports and terminology
+
+Note: Still using local lexical retrieval pending OpenAI embedding access.
+
+---
+
+## Week 9 — Multi-Agent Orchestration
+
+### Objective
+Combine all specialized agents (search, market, recommend, knowledge,
+email) into a single orchestration layer that classifies user intent and
+routes requests automatically — including requests that need more than one
+agent.
+
+### Implementation
+
+**Pipeline**
+```text
+User Request
+      ↓
+Single Entry Point
+      ↓
+Intent Classifier
+      ↓
+Orchestrator
+      ↓
+Specialized Agent(s)
+      ↓
+Combined Response
+```
+
+**Intent classifier** — `src/orchestrator/intentClassifier.ts` — recognizes
+five intents:
+```text
+search      → Week 4 conversational property search
+market      → Week 5 market statistics
+recommend   → Week 7 hybrid recommendation engine
+knowledge   → Week 8 RAG system
+email       → new email drafting agent
+```
+
+**Examples**
+```text
+Find me 3 bedroom homes in Irvine under $1.5M   → search
+What is the median home price in Irvine?         → market
+Show me homes similar to listing 1118422731      → recommend
+What does DOM mean?                              → knowledge
+```
+
+**Orchestrator** — `src/orchestrator/orchestrator.ts` — classifies intent,
+calls the appropriate agent(s), and returns the combined result. No agent
+logic was rebuilt; all Week 4/5/7/8 functionality is reused as-is.
+
+### Mixed-Intent Routing
+The orchestrator can detect multiple intents in one request, e.g.:
+```text
+Find me affordable homes in Pasadena and tell me whether prices are rising
+→ [ 'market', 'search' ]
+```
+Both agents run concurrently via `Promise.all()`, and their responses are combined.
+
+To avoid the property parser misreading market-related text as part of a
+city name, the property-search portion of the message is cleaned first:
+```text
+"Find me affordable homes in Pasadena and tell me whether prices are rising"
+→ "Find me affordable homes in Pasadena"   (sent to the property agent)
+```
+The market agent still analyzes the original, uncleaned request.
+
+### Single Entry Point
+`src/whatsappPropertySearch.ts` previously routed manually between search /
+market / recommend. Week 9 replaces that with one call:
+```text
+orchestrate(message, userId)
+```
+Resulting architecture:
+```text
+WhatsApp / OpenClaw
+        ↓
+whatsappPropertySearch.ts
+        ↓
+orchestrator.ts
+        ↓
+intentClassifier.ts
+        ↓
+Specialized Agent(s)
+        ↓
+Combined Response
+```
+The OpenClaw `SKILL.md` was also updated so all supported real estate
+requests go through this single orchestrator entry point.
+
+### Testing
+
+| Intent | Request | Result |
+|---|---|---|
+| search | "Find me 3 bedroom homes in Irvine under $1.5M" | "What property type do you prefer: condo, townhouse, or single family?" |
+| market | "What is the median home price in Irvine?" | "The median close price in Irvine over the last 12 months was $1,520,000. Based on 991 residential sales." |
+| recommend | "Show me homes similar to listing 1118422731" | 5 similar listings with structured/semantic/total scores |
+| knowledge | "What does DOM mean?" | Answered correctly from the Real Estate Glossary |
+
+**Mixed-intent test:**
+```text
+Find me affordable homes in Pasadena and tell me whether prices are rising
+→ Intents: [ 'market', 'search' ]
+```
+Combined response included both:
+```text
+MARKET ANALYSIS
+Pasadena Market Summary (Last 12 months)
+Sold properties: 498
+Average close price: $1,539,977
+Median close price: $1,277,500
+Average price per sq ft: $823
+Average days on market: 39.6
+Average list-to-close ratio: 103%
+```
+```text
+PROPERTY RESULTS
+What is your maximum budget for a home in Pasadena?
+```
+
+Confirmed again through the final local entry point:
+```bash
+npx ts-node src/whatsappPropertySearch.ts week9-test "Find me affordable homes in Pasadena and tell me whether prices are rising"
+```
+
+### Problems & Solutions
+| Problem | Solution |
+|---|---|
+| Broad keyword matching over-classified requests — e.g. "What is the median home price in Irvine?" and "What does DOM mean?" both matched `market` **and** `knowledge`; "Show me homes similar to listing..." matched `search` **and** `recommend` | Refined classifier rules to separate market, knowledge, search, and recommend intents more precisely |
+| Full mixed-intent message passed to the property parser caused "Pasadena and tell me whether prices are rising" to be read as the city | Added a property-query cleanup step that strips the market-related portion before parsing |
+| WhatsApp channel failed during final testing: `WhatsApp Web connection closed during setup (status 408)` / `WebSocket was closed before the connection was established` | Confirmed the orchestrator itself worked correctly locally — issue is external (proxy/network environment), same environment that caused the Week 6 OpenAI regional restriction |
+
+### Temporary Solution
+Validated Week 9 functionality locally via the same TypeScript entry point
+OpenClaw uses:
+```bash
+npx ts-node src/whatsappPropertySearch.ts week9-test "Find me affordable homes in Pasadena and tell me whether prices are rising"
+```
+This correctly classified both intents, ran both agents, cleaned the
+property query, and returned a combined response. Full WhatsApp transport
+testing can resume once the WebSocket connection issue is resolved.
+
+### Files Created
+```text
+src/orchestrator/
+├── intentClassifier.ts
+├── intentClassifier.test.ts
+├── orchestrator.ts
+└── orchestrator.test.ts
+
+src/skills/
+└── emailDraftAgent.ts
+```
+
+### Files Updated
+```text
+src/whatsappPropertySearch.ts
+~/.openclaw/workspace/skills/property-search/SKILL.md
+```
+
+### Status
+Multi-agent orchestration complete: intent classification, single-agent
+and mixed-agent routing, and combined responses all verified locally.
+Existing Week 4 session memory continues to work through the orchestrator.
+Note: Live WhatsApp transport testing currently blocked by an external
+WebSocket connection issue in the proxy/network environment, not by the
+orchestration code itself.
+
+---
+
+## Cumulative System Architecture (as of Week 9)
+
+```text
+WhatsApp / OpenClaw
+        ↓
+whatsappPropertySearch.ts   (single entry point)
+        ↓
+orchestrator.ts
+        ↓
+intentClassifier.ts  →  search | market | recommend | knowledge | email
+        ↓
+┌───────────────┬────────────────┬──────────────────┬───────────────┬───────────┐
+│ Property Search│ Market Stats   │ Recommendation    │ RAG Knowledge │ Email     │
+│ (Week 4)       │ Agent (Week 5) │ Engine (Week 7)   │ Agent (Week 8)│ Draft     │
+│ + session      │                │ + comp validation │               │ Agent     │
+│   memory       │                │                   │               │           │
+└───────────────┴────────────────┴──────────────────┴───────────────┴───────────┘
+        ↓
+Combined Response
+```
+
+**Underlying data & infra:**
+- MySQL `idx_exchange` database — `rets_property` (active listings),
+  `california_sold` (sold comps), `listing_embeddings` (vector store).
+- Embeddings: OpenAI `text-embedding-3-small` (blocked in current dev
+  region — Hong Kong) with a deterministic local 64-dim fallback
+  (`local-test-64`) and local lexical retrieval for RAG, both designed to
+  be swapped for real embeddings without architecture changes.
