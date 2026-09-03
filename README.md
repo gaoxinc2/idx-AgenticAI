@@ -18,6 +18,7 @@ agent — all reachable through WhatsApp.
 - [Week 8 — Retrieval-Augmented Generation (RAG)](#week-8--retrieval-augmented-generation-rag)
 - [Week 9 — Multi-Agent Orchestration](#week-9--multi-agent-orchestration)
 
+
 Each week follows the same structure: **Objective → Implementation →
 Testing → Problems & Solutions → Files → Status**, so the log is easy to
 scan and easy to reproduce from.
@@ -1071,3 +1072,144 @@ Combined Response
   region — Hong Kong) with a deterministic local 64-dim fallback
   (`local-test-64`) and local lexical retrieval for RAG, both designed to
   be swapped for real embeddings without architecture changes.
+
+
+## Week 10 — End-to-End WhatsApp Integration
+
+### Objective
+Connect the Week 9 multi-agent orchestrator to WhatsApp through OpenClaw and
+verify the complete real estate assistant end-to-end.
+
+### Implementation
+
+`src/whatsappPropertySearch.ts` now uses the orchestrator as the single entry
+point:
+
+```text
+WhatsApp
+   ↓
+OpenClaw
+   ↓
+whatsappPropertySearch.ts
+   ↓
+orchestrator.ts
+   ↓
+intentClassifier.ts
+   ↓
+Specialized Agent(s)
+   ↓
+Response back to WhatsApp
+```
+
+All incoming messages are passed through:
+
+```text
+orchestrate(message, userId)
+```
+
+The orchestrator then routes requests to property search, market statistics,
+recommendations, RAG knowledge, or multiple agents for mixed-intent requests.
+
+The OpenClaw skill was updated so all supported real estate messages execute:
+
+```bash
+cd /Users/stacychan/idx-AgenticAI && npx ts-node src/whatsappPropertySearch.ts "<userId>" "<message>"
+```
+
+The intent classifier was also improved to recognize conversational property
+search follow-ups such as:
+
+```text
+Under $1.5M
+Single family with 3 bedrooms
+With a pool
+```
+
+This allows the Week 4 multi-turn conversation flow to continue through the
+Week 9 orchestrator.
+
+### Testing
+
+**Property search**
+```bash
+npx ts-node src/whatsappPropertySearch.ts week10-debug "Find single family homes in Irvine under \$1.5M with 3 bedrooms"
+```
+
+Correctly parsed:
+
+```text
+city: Irvine
+maxPrice: 1500000
+beds: 3
+type: SingleFamilyResidence
+```
+
+and returned 5 matching active MLS listings.
+
+**Mixed intent**
+```bash
+npx ts-node src/whatsappPropertySearch.ts week10-mixed 'Find homes in Pasadena and tell me if prices are rising'
+```
+
+Returned both:
+
+```text
+MARKET ANALYSIS
+Pasadena Market Summary
+
+Sold properties: 498
+Average close price: $1,539,977
+Median close price: $1,277,500
+Average price per sq ft: $823
+Average days on market: 39.6
+Average list-to-close ratio: 103%
+```
+
+and:
+
+```text
+PROPERTY RESULTS
+What is your maximum budget for a home in Pasadena?
+```
+
+The OpenClaw gateway was restarted and verified:
+
+```bash
+openclaw gateway restart
+openclaw status
+```
+
+Live WhatsApp testing successfully confirmed:
+
+```text
+Property Search       ✓
+Market Statistics     ✓
+Recommendations       ✓
+RAG Knowledge         ✓
+Mixed Intent          ✓
+Multi-Turn Search     ✓
+WhatsApp Transport    ✓
+```
+
+### Problems & Solutions
+
+| Problem | Solution |
+|---|---|
+| Short property-search follow-ups were classified as unknown | Expanded `intentClassifier.ts` to recognize property details and budget expressions as search intent |
+| `$1.5M` became `500000` during a terminal test | zsh expanded `$1` inside double quotes; escaping `$` or using single quotes fixed the test |
+| Week 9 WhatsApp testing was blocked by WebSocket/network issues | Restarted OpenClaw after returning to the U.S. and confirmed the WhatsApp connection worked |
+| `code` command was unavailable for editing `SKILL.md` | Used macOS `open` / TextEdit instead |
+
+### Files Updated
+
+```text
+src/orchestrator/intentClassifier.ts
+src/whatsappPropertySearch.ts
+~/.openclaw/workspace/skills/property-search/SKILL.md
+```
+
+### Status
+Week 10 complete. The full multi-agent real estate assistant now works
+end-to-end through WhatsApp, including property searches, market statistics,
+recommendations, RAG questions, mixed-intent requests, and multi-turn
+conversations.

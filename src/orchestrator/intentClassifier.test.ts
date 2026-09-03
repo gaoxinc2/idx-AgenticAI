@@ -13,3 +13,4 @@ for (const query of queries) {
   console.log("\nQuery:", query);
   console.log(classifyIntent(query));
 }
+

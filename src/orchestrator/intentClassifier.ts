@@ -79,20 +79,44 @@ export function classifyIntent(
   ) {
     intents.push("knowledge");
   }
-
   /*
-   * Property search
-   *
-   * Recommendation requests should NOT also
-   * become normal property searches.
-   */
-  const isPropertySearch =
+  * Property search
+  *
+  * Recognize both:
+  * 1. Full search requests
+  *    "Find homes in Irvine"
+  *
+  * 2. Conversational follow-ups
+  *    "Under $1.5M"
+  *    "Single family with 3 bedrooms"
+  *    "With a pool"
+  *
+  * Recommendation requests should NOT also
+  * become normal property searches.
+  */
+  const hasSearchVerb =
     /\b(find|search|show|looking for)\b/.test(
       text,
-    ) &&
+    );
+
+  const hasPropertyNoun =
     /\b(home|homes|house|houses|property|properties|listing|listings|condo|condos|townhouse|townhouses)\b/.test(
       text,
     );
+
+  const hasPropertyDetails =
+    /\b(single family|condo|condominium|townhouse|townhome|bed|beds|bedroom|bedrooms|bath|baths|bathroom|bathrooms|pool|view|hoa|sqft|square feet)\b/.test(
+      text,
+    ) ||
+    /\bunder\s+\$?\d/.test(text) ||
+    /\bup to\s+\$?\d/.test(text) ||
+    /\b\d+\s*(?:k|m|million|thousand)\b/.test(
+      text,
+    );
+
+  const isPropertySearch =
+    (hasSearchVerb && hasPropertyNoun) ||
+    hasPropertyDetails;
 
   if (
     isPropertySearch &&
